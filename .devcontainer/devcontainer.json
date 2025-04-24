@@ -21,6 +21,6 @@
       ]
     }
   },
-  "postCreateCommand": "uv venv && . .venv/bin/activate && uv pip install -r requirements.txt && git config --global init.defaultBranch main && git config --global --add safe.directory ${containerWorkspaceFolder} && streamlit run main.py",
+  "postCreateCommand": "uv venv && . .venv/bin/activate && uv pip install -r requirements.txt && git config --global init.defaultBranch main && git config --global --add safe.directory ${containerWorkspaceFolder} && streamlit run src/chunk_recall_trainer/main.py --browser.gatherUsageStats false",
   "remoteUser": "vscode"
 }
