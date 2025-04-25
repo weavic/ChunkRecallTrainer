@@ -48,7 +48,7 @@ Intermediate English learners often *recognise* useful sentence chunks but canno
 2. **Review the queue**  
    - Click **Reveal → Hard / Good / Easy** for up to 5 items per day.
 3. **Save progress**  
-   - Hit **Download all Chunks** to export your updated deck.  
+   - Hit **Export CSV** to export your updated deck.  
    - Need a clean slate? Use **Reset database** ⚠️ (data is wiped).
 
 ## ⚡ Quick Start 
