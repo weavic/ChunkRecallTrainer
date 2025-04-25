@@ -1,0 +1,12 @@
+[project]
+name = "chunk_recall_trainer"
+version = "0.0.0"
+description = "Spaced-repetition trainer for English chunks"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -41,6 +41,16 @@ docker-compose up --build # 🐳 Streamlit will be served on port 8080
 ```
 open http://localhost:8080/ in your browser
 
+### 🧪 Running tests
+
+```bash
+# one-time
+pip install -e .[dev]          # or: echo "[pytest]\npythonpath = src" > pytest.ini
+
+# every time
+pytest -q
+```
+
 ## 📄 License
 
 MIT
