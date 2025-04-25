@@ -9,7 +9,7 @@ examples = [
         "日々のトレーニングの積み重ねが大事だよね",
         "It's the daily training that matters.",
     ),
-    ("情報をキャッチアップは頻繁に", "I've got a lot to catch up on information-wise."),
+    ("情報のキャッチアップは頻繁に", "I've got a lot to catch up on information-wise."),
 ]
 
 repo = ChunkRepo()

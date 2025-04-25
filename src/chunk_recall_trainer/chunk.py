@@ -150,7 +150,7 @@ class ChunkRepo:
 
     def save_from_csv(self, file_obj) -> int:
         """Save chunks from a CSV file to the database."""
-        import pandas as pd, re
+        import re
 
         df = pd.read_csv(file_obj)
 
