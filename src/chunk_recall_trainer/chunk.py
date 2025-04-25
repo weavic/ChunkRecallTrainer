@@ -147,8 +147,6 @@ class ChunkRepo:
 
 
 # ────────────────────────────── SM‑2 Scheduling ───────────────────────────────
-
-
 def sm2_update(chunk: Chunk, quality: int) -> Chunk:
     """Update a chunk with a recall *quality* score 0–5.
     Ref: https://www.supermemo.com/en/archives1990-2015/english/ol/sm2
