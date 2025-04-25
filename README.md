@@ -1,6 +1,6 @@
 # Chunk Recall Trainer
 
-> **Status:** ✨ Prototype (Sprint 1: 2025-04-## → 04-##)
+> **Status:** ✨ Prototype (Sprint 1: 2025-04-23 → 04-27)
 
 ## 🚀 Problem Statement
 
@@ -23,19 +23,23 @@ Intermediate English learners often *recognise* useful sentence chunks but canno
 
 ## 🛠 Tech Stack & Roadmap
 
-- [ ] Streamlit UI  
-- [ ] SQLite data layer (Google Sheets sync v0.2)  
-- [ ] SM-2 scheduling service (pure Python)  
-- [ ] LangChain templating for GPT-powered prompts  
-- [ ] Whisper speech-to-text integration (v0.3)  
+| Status | Component | Notes / Milestone |
+| :---: | --- | --- |
+| ✅ | **Streamlit UI** | Minimal daily-review loop |
+| ✅ | **SM-2 scheduler** | Pure-Python implementation |
+| ✅ | **SQLite data layer** | `seed.py` for local demo data |
+| 🔜 | **CSV import & manual add** | **v0.1 target** — sidebar uploader / form |
+| ⏭️ | **LangChain prompt templates** | Paraphrase generator (v0.2) |
+| ⏭️ | **Whisper speech-to-text** | Pronunciation drill (v0.3) |
 
-## ⚡ Quick Start (coming in v0.1)
+## ⚡ Quick Start 
 
 ```bash
 git clone https://github.com/weavic/ChunkRecallTrainer
 cd ChunkRecallTrainer
-pip install -r requirements.txt
-streamlit run app.py
+docker-compose up --build # 🐳 Streamlit will be served on port 8080
+```
+open http://localhost:8080/ in your browser
 
 ## 📄 License
 
