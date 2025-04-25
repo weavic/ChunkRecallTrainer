@@ -7,13 +7,21 @@
 Intermediate English learners often *recognise* useful sentence chunks but cannot *recall* them fast enough in real conversations.  
 **Chunk Recall Trainer** lets learners log those chunks, then surfaces exactly five that are about to be forgotten, using a spaced-repetition algorithm. Timely recall practice turns passive knowledge into fluent, automatic output.
 
-## 🎯 Features
+## 🎯 Core Features
 
-1. **Record** & tag chunks you want to retain (manual form or Google Sheets import).  
-2. **Review** with a 5-item quiz driven by the SM-2 algorithm (Hard / Good / Easy buttons).  
-3. **Output prompts** for speaking or writing, including optional Whisper speech input.  
-4. **Progress tracking**: review streak, Ease-Factor graph, next due counts.  
-5. *(Planned)* **Variations generator**: GPT-4o paraphrases each chunk for flexibility.
+1. **Record** chunks you want to retain 
+2. **Review** with a 5-item quiz driven by the SM-2 algorithm (Hard / Good / Easy buttons)
+3. **Output prompts** for speaking or writing *(Whisper STT planned)*
+4. **Progress tracking**: review streak, Ease-Factor graph, next due counts
+5. *(Planned)* **Variations generator**: GPT-4o paraphrases each chunk for flexibility
+
+## 🛠 Data Tools (sidebar)
+| Icon | Action | Purpose |
+| :---: | --- | --- |
+| 📂 | **Import CSV** | Load an existing deck |
+| ➕ | **Add a single chunk** | Quick ad-hoc entry |
+| 💾 | **Export CSV** | Back-up / share progress |
+| 🗑️ | **Reset database** | Wipe all chunks (danger) |
 
 ## 💡 Use Cases
 
@@ -31,6 +39,17 @@ Intermediate English learners often *recognise* useful sentence chunks but canno
 | 🔜 | **CSV import & manual add** | **v0.1 target** — sidebar uploader / form |
 | ⏭️ | **LangChain prompt templates** | Paraphrase generator (v0.2) |
 | ⏭️ | **Whisper speech-to-text** | Pronunciation drill (v0.3) |
+
+## 🚀 How to use
+
+1. **Load your data**  
+   - Drag-and-drop a CSV (`jp_prompt,en_answer,...`) into **Upload CSV**  
+     *or* type a sentence pair in **Add a single chunk**.
+2. **Review the queue**  
+   - Click **Reveal → Hard / Good / Easy** for up to 5 items per day.
+3. **Save progress**  
+   - Hit **Export CSV** to export your updated deck.  
+   - Need a clean slate? Use **Reset database** ⚠️ (data is wiped).
 
 ## ⚡ Quick Start 
 
