@@ -1,25 +1,17 @@
-# chunk.py – data model + SM‑2 scheduler for *Chunk Recall Trainer*
+# chunk.py – data model + SM-2 scheduler for *Chunk Recall Trainer*
 
-"""A minimal, self‑contained data layer that
-• stores chunks in SQLite
-• fetches ≤5 overdue chunks for each session
-• updates scheduling fields with a lightweight SM‑2 algorithm
-
-Usage example (inside Streamlit):
->>> repo = ChunkRepo()
->>> overdue = repo.get_overdue()
->>> st.write(overdue[0].jp_prompt)
->>> updated = sm2_update(overdue[0], quality=4)
->>> repo.update(updated)
-"""
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from datetime import date, datetime, timedelta, timezone
 import sqlite3
 from typing import List, Optional, Union
 
 DB_PATH = "chunks.db"
+
+###############################################################################
+# Data model
+###############################################################################
 
 
 @dataclass
@@ -29,14 +21,15 @@ class Chunk:
     en_answer: str
     ef: float = 2.5  # Easiness Factor
     interval: int = 0  # days until next review
-    next_due_date: date = date.today()
+    next_due_date: date = field(default_factory=date.today)
     review_count: int = 0
-    created_at: datetime = datetime.now(timezone.utc)
-    updated_at: datetime = datetime.now(timezone.utc)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
-    # ──────────────────────────────── DB helpers ────────────────────────────────
+    # ──────────────────────────────── DB helpers ─────────────────────────────
     @staticmethod
     def create_table(conn: sqlite3.Connection) -> None:
+        """Create the `chunks` table if it doesn’t exist."""
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS chunks (
@@ -54,6 +47,7 @@ class Chunk:
         )
         conn.commit()
 
+    # save() persists a new or existing chunk --------------------------------
     def save(self, conn: sqlite3.Connection) -> "Chunk":
         payload = {
             **asdict(self),
@@ -92,6 +86,7 @@ class Chunk:
         conn.commit()
         return self
 
+    # Row -> Chunk -----------------------------------------------------------
     @staticmethod
     def from_row(row: sqlite3.Row) -> "Chunk":
         def _parse_date(val: Union[str, date, datetime]) -> date:
@@ -99,7 +94,6 @@ class Chunk:
                 return val
             if isinstance(val, datetime):
                 return val.date()
-            # assume str
             return datetime.fromisoformat(val).date()
 
         def _parse_dt(val: Union[str, datetime]) -> datetime:
@@ -120,10 +114,18 @@ class Chunk:
         )
 
 
-# ────────────────────────────── Repository layer ──────────────────────────────
+###############################################################################
+# Repository layer
+###############################################################################
+
+
 class ChunkRepo:
     def __init__(self, db_path: str = DB_PATH):
-        self.conn = sqlite3.connect(db_path, detect_types=sqlite3.PARSE_DECLTYPES)
+        self.conn = sqlite3.connect(
+            db_path,
+            detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
+            check_same_thread=False,
+        )
         self.conn.row_factory = sqlite3.Row
         Chunk.create_table(self.conn)
 
@@ -146,12 +148,17 @@ class ChunkRepo:
         return [Chunk.from_row(r) for r in rows]
 
 
-# ────────────────────────────── SM‑2 Scheduling ───────────────────────────────
+###############################################################################
+# SM-2 Scheduling
+###############################################################################
+
+
 def sm2_update(chunk: Chunk, quality: int) -> Chunk:
     """Update a chunk with a recall *quality* score 0–5.
     Ref: https://www.supermemo.com/en/archives1990-2015/english/ol/sm2
     """
-    assert 0 <= quality <= 5, "quality must be 0‥5"
+    if not 0 <= quality <= 5:
+        raise ValueError("quality must be between 0 and 5")
 
     if quality < 3:
         chunk.interval = 1
@@ -162,7 +169,6 @@ def sm2_update(chunk: Chunk, quality: int) -> Chunk:
             chunk.interval = 6
         else:
             chunk.interval = int(round(chunk.interval * chunk.ef))
-        # Easiness Factor update
         chunk.ef = max(
             1.3, chunk.ef + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02))
         )
