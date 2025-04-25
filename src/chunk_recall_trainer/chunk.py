@@ -6,6 +6,7 @@ from dataclasses import dataclass, asdict, field
 from datetime import date, datetime, timedelta, timezone
 import sqlite3
 from typing import List, Optional, Union
+import pandas as pd
 
 DB_PATH = "chunks.db"
 
@@ -146,6 +147,48 @@ class ChunkRepo:
             (limit,),
         ).fetchall()
         return [Chunk.from_row(r) for r in rows]
+
+    def save_from_csv(self, file_obj) -> int:
+        """Save chunks from a CSV file to the database."""
+        import pandas as pd, re
+
+        df = pd.read_csv(file_obj)
+
+        df.columns = [re.sub(r"\s+", "", c.lower()) for c in df.columns]
+        col_jp = next(c for c in df.columns if c.startswith("jp"))
+        col_en = next(c for c in df.columns if c.startswith("en"))
+
+        added = 0
+        for _, row in df.iterrows():
+            next_due = (
+                date.fromisoformat(row["next_due_date"])
+                if "next_due_date" in row and not pd.isna(row["next_due_date"])
+                else date.today()
+            )
+            self.add(
+                Chunk(
+                    id=None,
+                    jp_prompt=row[col_jp],
+                    en_answer=row[col_en],
+                    ef=row.get("ef", 2.5),
+                    interval=row.get("interval", 0),
+                    next_due_date=next_due,
+                    review_count=row.get("review_count", 0),
+                )
+            )
+            added += 1
+        return added
+
+    def export_all(self) -> str:
+        """Export all chunks to CSV."""
+        rows = self.conn.execute("SELECT * FROM chunks").fetchall()
+        df = pd.DataFrame([dict(r) for r in rows])
+        return df.to_csv(index=False)
+
+    def reset(self) -> None:
+        """Delete all chunks from the database."""
+        self.conn.execute("DELETE FROM chunks")
+        self.conn.commit()
 
 
 ###############################################################################
