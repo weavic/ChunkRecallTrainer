@@ -1,0 +1,12 @@
+FROM python:3.13-slim
+
+# Install required system packages
+RUN apt-get update && apt-get install -y curl git build-essential sqlite3 && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -m vscode
+
+USER vscode
+WORKDIR /workspace
+
+ENV PATH="/home/vscode/.cargo/bin:$PATH"
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
