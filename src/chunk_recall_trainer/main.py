@@ -51,10 +51,10 @@ st.markdown(f"✅ **Answer:** {chunk.en_answer}")
 cols = st.columns(3)
 
 # Mapping: label -> SM‑2 quality score
-for label, score in {"Hard": 2, "Good": 4, "Easy": 5}.items():
+for col, (label, score) in zip(cols, {"Hard": 2, "Good": 4, "Easy": 5}.items()):
     key = f"{chunk.id}_{label}"
 
-    if cols.pop(0).button(label, key=key):
+    if col.button(label, key=key):
         # Update scheduling in DB
         repo.update(sm2_update(chunk, score))
         # Remove this chunk from today's queue
