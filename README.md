@@ -1,6 +1,6 @@
 # Chunk Recall Trainer
 
-> **Status:** ✨ Prototype (Sprint 1: 2025-04-23 → 04-27)
+> **Status:** ✨ Prototype (Sprint 2: 2025-04-28 → 05-02)
 
 ## 🚀 Problem Statement
 
@@ -36,9 +36,12 @@ Intermediate English learners often *recognise* useful sentence chunks but canno
 | ✅ | **Streamlit UI** | Minimal daily-review loop |
 | ✅ | **SM-2 scheduler** | Pure-Python implementation |
 | ✅ | **SQLite data layer** | `seed.py` for local demo data |
-| 🔜 | **CSV import & manual add** | **v0.1 target** — sidebar uploader / form |
-| ⏭️ | **LangChain prompt templates** | Paraphrase generator (v0.2) |
+| ✅ | **CSV import & manual add** | **v0.1 target** — sidebar uploader / form |
+| ✅ | **User session & API key input** | Session-based OpenAI API key entry (v0.2) |
+| ✅ | **UUID-based user separation** | Session UUID, SQLite namespacing (v0.2) |
+| ✅ | **LangChain prompt templates** | Paraphrase generator (v0.2) |
 | ⏭️ | **Whisper speech-to-text** | Pronunciation drill (v0.3) |
+| ⏭️ | **Auth-based user management** | Google/Firebase login + secure chunk storage (v0.4) |
 
 ## 🚀 How to use
 
