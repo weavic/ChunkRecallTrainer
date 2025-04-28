@@ -4,6 +4,7 @@ from chunk import ChunkRepo, sm2_update, Chunk
 import pandas as pd
 from io import StringIO
 import uuid
+from exercises import ExerciseGenerator
 
 st.set_page_config(page_title="Chunk Recall Trainer", page_icon="📚", layout="centered")
 st.sidebar.header("📂 Data Management")
@@ -123,30 +124,22 @@ total = st.session_state.queue_total
 current = total - remaining + 1
 st.subheader(f"Progress: {current} / {total}")
 
-st.markdown(f"**JP Prompt:** {chunk.jp_prompt}")
-
-if "revealed" not in st.session_state:
-    st.session_state.revealed = False
-
-if not st.session_state.revealed:
-    if st.button("Reveal", key=f"reveal_{chunk.id}"):
-        st.session_state.revealed = True
-        st.rerun()
+if not api_key:
+    st.warning("⚠️ Please enter your OpenAI API key in the sidebar.")
     st.stop()
 
-st.markdown(f"✅ **Answer:** {chunk.en_answer}")
+gen = ExerciseGenerator(api_key=st.session_state["api_key"])
 
-cols = st.columns(3)
+for ch in repo.get_overdue():
+    with st.expander(ch.jp_prompt):
+        if st.button("📝 Practice", key=f"q_{ch.id}"):
+            ex = gen.create_exercise(ch.jp_prompt, ch.en_answer)
+            st.session_state[f"ex_{ch.id}"] = ex
 
-# Mapping: label -> SM‑2 quality score
-for col, (label, score) in zip(cols, {"Hard": 2, "Good": 4, "Easy": 5}.items()):
-    key = f"{chunk.id}_{label}"
-
-    if col.button(label, key=key):
-        # Update scheduling in DB
-        repo.update(sm2_update(chunk, score))
-        # Remove this chunk from today's queue
-        queue.pop(0)
-        # Reset reveal state and rerun
-        st.session_state.revealed = False
-        st.rerun()
+        ex = st.session_state.get(f"ex_{ch.id}")
+        if ex:
+            st.markdown(f"**Prompt:** {ex.question}")
+            ans = st.text_area("Your answer", key=f"ans_{ch.id}")
+            if st.button("✅ Check", key=f"chk_{ch.id}"):
+                fb = gen.review_answer(ans, ex, ch.en_answer)
+                st.markdown(fb.comment_md)
