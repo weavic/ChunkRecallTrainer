@@ -3,6 +3,7 @@ import streamlit as st
 from chunk import ChunkRepo, sm2_update, Chunk
 import pandas as pd
 from io import StringIO
+import uuid
 
 st.set_page_config(page_title="Chunk Recall Trainer", page_icon="📚", layout="centered")
 st.sidebar.header("📂 Data Management")
@@ -21,6 +22,20 @@ repo = ChunkRepo()
 api_key = st.text_input("Enter your OpenAI API Key", type="password")
 if api_key:
     st.session_state["api_key"] = api_key
+
+# ──────────────────────────────────────────────────────────────────────────────
+# UUID Generation as a User ID
+# ──────────────────────────────────────────────────────────────────────────────
+if "user_id" not in st.session_state:
+    query_params = st.query_params
+    if "uid" in query_params:
+        st.session_state.user_id = query_params["uid"][0]
+    else:
+        st.session_state.user_id = str(uuid.uuid4())
+        st.query_params["uid"] = st.session_state.user_id
+
+    user_id = st.session_state.user_id
+    st.sidebar.markdown(f"**User ID:** {user_id}")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CSV Import
