@@ -16,6 +16,13 @@ if st.session_state.get("just_reset"):
 repo = ChunkRepo()
 
 # ──────────────────────────────────────────────────────────────────────────────
+# API Key Import
+# ──────────────────────────────────────────────────────────────────────────────
+api_key = st.text_input("Enter your OpenAI API Key", type="password")
+if api_key:
+    st.session_state["api_key"] = api_key
+
+# ──────────────────────────────────────────────────────────────────────────────
 # CSV Import
 # ──────────────────────────────────────────────────────────────────────────────
 uploaded = st.sidebar.file_uploader("Upload CSV", type="csv")
