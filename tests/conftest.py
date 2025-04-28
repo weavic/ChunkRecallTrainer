@@ -9,6 +9,6 @@ def patch_chat_openai(monkeypatch):
         def invoke(self, *args, **kwargs):
             if "practice question" in str(args[0]):
                 return {"question": "Use 'How are you?'", "answer": "How are you?"}
-            return {"score": 5, "better": None, "comment": "Perfect!"}
+            return {"score": 4, "better": None, "comment": "Perfect!"}
 
     monkeypatch.setattr("exercises.ChatOpenAI", DummyLLM)
