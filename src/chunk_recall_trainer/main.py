@@ -14,7 +14,23 @@ if st.session_state.get("just_reset"):
     st.toast("🗑️ Database cleared!", icon="🔥")
     st.session_state.just_reset = False
 
-repo = ChunkRepo()
+# ──────────────────────────────────────────────────────────────────────────────
+# UUID Generation as a User ID
+# ──────────────────────────────────────────────────────────────────────────────
+if "user_id" not in st.session_state:
+    query_params = st.query_params
+    uid = query_params.get("uid")
+    if "uid" in query_params:
+        st.session_state.user_id = uid if isinstance(uid, str) else uid[0]
+    else:
+        st.session_state.user_id = str(uuid.uuid4())
+        st.query_params["uid"] = st.session_state.user_id
+
+    user_id = st.session_state.user_id
+    st.sidebar.markdown(f"**User ID:** {user_id}")
+
+
+repo = ChunkRepo(user_id=st.session_state.user_id)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # API Key Import
@@ -22,20 +38,6 @@ repo = ChunkRepo()
 api_key = st.text_input("Enter your OpenAI API Key", type="password")
 if api_key:
     st.session_state["api_key"] = api_key
-
-# ──────────────────────────────────────────────────────────────────────────────
-# UUID Generation as a User ID
-# ──────────────────────────────────────────────────────────────────────────────
-if "user_id" not in st.session_state:
-    query_params = st.query_params
-    if "uid" in query_params:
-        st.session_state.user_id = query_params["uid"][0]
-    else:
-        st.session_state.user_id = str(uuid.uuid4())
-        st.query_params["uid"] = st.session_state.user_id
-
-    user_id = st.session_state.user_id
-    st.sidebar.markdown(f"**User ID:** {user_id}")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # CSV Import
@@ -71,7 +73,7 @@ with st.sidebar.form("add_chunk"):
     en = st.text_area("EN Answer", height=80)
     submitted = st.form_submit_button("Add")
     if submitted and jp and en:
-        repo.add(Chunk(id=None, jp_prompt=jp, en_answer=en))
+        repo.add(Chunk(id=None, user_id=repo.user_id, jp_prompt=jp, en_answer=en))
         st.session_state.just_added = True  # Flag to indicate a new chunk was added
         st.rerun()
 

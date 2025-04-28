@@ -1,4 +1,12 @@
-# chunk.py – data model + SM-2 scheduler for *Chunk Recall Trainer*
+"""Chunk data layer with user‑scoped persistence.
+
+This module assumes a *single* SQLite database file shared by all users, but every
+row is namespaced by the `user_id` column so that users can only access their own
+chunks.
+
+The caller (Streamlit layer) is responsible for passing the currently active
+`user_id` from `st.session_state["user_id"]`.
+"""
 
 from __future__ import annotations
 
@@ -17,7 +25,10 @@ DB_PATH = "chunks.db"
 
 @dataclass
 class Chunk:
+    """A chunk (= phrase pair) scheduled with SM‑2 parameters."""
+
     id: Optional[int]
+    user_id: str
     jp_prompt: str
     en_answer: str
     ef: float = 2.5  # Easiness Factor
@@ -35,6 +46,7 @@ class Chunk:
             """
             CREATE TABLE IF NOT EXISTS chunks (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT    NOT NULL,
                 jp_prompt     TEXT    NOT NULL,
                 en_answer     TEXT    NOT NULL,
                 ef            REAL    NOT NULL DEFAULT 2.5,
@@ -59,9 +71,9 @@ class Chunk:
         if self.id is None:
             cur = conn.execute(
                 """
-                INSERT INTO chunks (jp_prompt, en_answer, ef, interval, next_due_date,
+                INSERT INTO chunks (user_id, jp_prompt, en_answer, ef, interval, next_due_date,
                                     review_count, created_at, updated_at)
-                VALUES (:jp_prompt, :en_answer, :ef, :interval, :next_due_date,
+                VALUES (:user_id, :jp_prompt, :en_answer, :ef, :interval, :next_due_date,
                         :review_count, :created_at, :updated_at);
                 """,
                 payload,
@@ -80,7 +92,7 @@ class Chunk:
                     next_due_date=:next_due_date,
                     review_count=:review_count,
                     updated_at=:updated_at
-                WHERE id=:id;
+                WHERE id=:id AND user_id=:user_id;
                 """,
                 payload,
             )
@@ -104,6 +116,7 @@ class Chunk:
 
         return Chunk(
             id=row["id"],
+            user_id=row["user_id"],
             jp_prompt=row["jp_prompt"],
             en_answer=row["en_answer"],
             ef=row["ef"],
@@ -121,7 +134,10 @@ class Chunk:
 
 
 class ChunkRepo:
-    def __init__(self, db_path: str = DB_PATH):
+    """User‑scoped repository."""
+
+    def __init__(self, user_id: str, db_path: str = DB_PATH):
+        self.user_id = user_id
         self.conn = sqlite3.connect(
             db_path,
             detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
@@ -131,20 +147,22 @@ class ChunkRepo:
         Chunk.create_table(self.conn)
 
     def add(self, chunk: Chunk) -> Chunk:
+        chunk.user_id = self.user_id
         return chunk.save(self.conn)
 
     def update(self, chunk: Chunk) -> None:
+        chunk.user_id = self.user_id
         chunk.save(self.conn)
 
     def get_overdue(self, limit: int = 5) -> List[Chunk]:
         rows = self.conn.execute(
             """
             SELECT * FROM chunks
-            WHERE DATE(next_due_date) <= DATE('now')
+            WHERE user_id = ? AND DATE(next_due_date) <= DATE('now')
             ORDER BY next_due_date ASC, review_count ASC
             LIMIT ?
             """,
-            (limit,),
+            (self.user_id, limit),
         ).fetchall()
         return [Chunk.from_row(r) for r in rows]
 
@@ -168,6 +186,7 @@ class ChunkRepo:
             self.add(
                 Chunk(
                     id=None,
+                    user_id=self.user_id,
                     jp_prompt=row[col_jp],
                     en_answer=row[col_en],
                     ef=row.get("ef", 2.5),
@@ -180,14 +199,16 @@ class ChunkRepo:
         return added
 
     def export_all(self) -> str:
-        """Export all chunks to CSV."""
-        rows = self.conn.execute("SELECT * FROM chunks").fetchall()
+        """Export *this user's* chunks to CSV."""
+        rows = self.conn.execute(
+            "SELECT * FROM chunks WHERE user_id = ?", (self.user_id,)
+        ).fetchall()
         df = pd.DataFrame([dict(r) for r in rows])
         return df.to_csv(index=False)
 
     def reset(self) -> None:
-        """Delete all chunks from the database."""
-        self.conn.execute("DELETE FROM chunks")
+        """Delete **this user's** chunks from the database."""
+        self.conn.execute("DELETE FROM chunks WHERE user_id = ?", (self.user_id,))
         self.conn.commit()
 
 
