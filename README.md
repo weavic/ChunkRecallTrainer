@@ -40,7 +40,8 @@ Intermediate English learners often *recognise* useful sentence chunks but canno
 | ✅ | **User session & API key input** | Session-based OpenAI API key entry (v0.2) |
 | ✅ | **UUID-based user separation** | Session UUID, SQLite namespacing (v0.2) |
 | ✅ | **LangChain prompt templates** | Paraphrase generator (v0.2) |
-| ⏭️ | **UI polish** | Change UI layout and CSS (v0.2.1) |
+| ✅ | **Env config for API key** | Support .env via devcontainer / Docker Compose (v0.2.1) |
+| ✅ | **UI polish** | Change UI layout and CSS (v0.2.1) |
 | ⏭️ | **Whisper speech-to-text** | Pronunciation drill (v0.3) |
 | ⏭️ | **Auth-based user management** | Google/Firebase login + secure chunk storage (v0.4) |
 

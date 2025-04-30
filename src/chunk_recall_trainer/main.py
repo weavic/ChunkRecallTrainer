@@ -103,7 +103,7 @@ with st.sidebar:
     # Dangerous chunk deletion
     # ──────────────────────────────────────────────────────────────────────────────
     st.markdown("### ⚠️ Dangerous chunk deletion")
-    with st.sidebar.form("reset_db"):
+    with st.form("reset_db"):
         confirm = st.checkbox("Yes, delete **all** chunks")
         reset = st.form_submit_button("Reset database", type="primary")
         if reset and confirm:
@@ -159,7 +159,7 @@ with col2:
 tab_practice, tab_manage = st.tabs(["💬 Practice", "📋 Manage Chunks"])
 
 with tab_practice:
-    if not api_key:
+    if not st.session_state.get("api_key"):
         st.warning("⚠️ Please enter your OpenAI API key in the sidebar.")
         st.stop()
 

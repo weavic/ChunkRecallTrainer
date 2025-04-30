@@ -62,6 +62,8 @@ class Chunk:
 
     # save() persists a new or existing chunk --------------------------------
     def save(self, conn: sqlite3.Connection) -> "Chunk":
+        """Save the chunk to the database. If it has an ID, update it; otherwise,
+        insert a new row."""
         payload = {
             **asdict(self),
             "next_due_date": self.next_due_date.isoformat(),
@@ -102,6 +104,8 @@ class Chunk:
     # Row -> Chunk -----------------------------------------------------------
     @staticmethod
     def from_row(row: sqlite3.Row) -> "Chunk":
+        """Convert a SQLite row to a Chunk object."""
+
         def _parse_date(val: Union[str, date, datetime]) -> date:
             if isinstance(val, date) and not isinstance(val, datetime):
                 return val
@@ -137,6 +141,7 @@ class ChunkRepo:
     """User‑scoped repository."""
 
     def __init__(self, user_id: str, db_path: str = DB_PATH):
+        """Initialize the repository with a user ID and database path."""
         self.user_id = user_id
         self.conn = sqlite3.connect(
             db_path,
@@ -147,12 +152,14 @@ class ChunkRepo:
         Chunk.create_table(self.conn)
 
     def get_all(self) -> List[Chunk]:
+        """Get all chunks for this user."""
         rows = self.conn.execute(
             "SELECT * FROM chunks WHERE user_id = ?", (self.user_id,)
         ).fetchall()
         return [Chunk.from_row(r) for r in rows]
 
     def get_overdue(self, limit: int = 5) -> List[Chunk]:
+        """Get chunks that are due for review today or earlier."""
         rows = self.conn.execute(
             """
             SELECT * FROM chunks
@@ -165,14 +172,18 @@ class ChunkRepo:
         return [Chunk.from_row(r) for r in rows]
 
     def add(self, chunk: Chunk) -> Chunk:
+        """Add a new chunk to the database."""
         chunk.user_id = self.user_id
         return chunk.save(self.conn)
 
-    def update(self, chunk: Chunk) -> None:
-        chunk.user_id = self.user_id
-        chunk.save(self.conn)
+    def update(self, chunk: Chunk) -> Chunk:
+        """Update an existing chunk."""
+        if chunk.user_id != self.user_id:
+            raise ValueError("Cannot update chunk from another user")
+        return chunk.save(self.conn)
 
     def bulk_update(self, df: pd.DataFrame) -> None:
+        """Update multiple chunks in the database."""
         for _, row in df.iterrows():
             ch = Chunk(
                 id=row["id"],
@@ -187,6 +198,7 @@ class ChunkRepo:
             self.update(ch)
 
     def delete_many(self, ids: list[int]) -> None:
+        """Delete multiple chunks from the database."""
         if not ids:
             return
         q = ",".join(["?"] * len(ids))
@@ -197,9 +209,10 @@ class ChunkRepo:
         self.conn.commit()
 
     def reset_intervals(self, ids: list[int]) -> None:
+        """Reset the review intervals of multiple chunks."""
         if not ids:
             return
-        q = ",".join("?" * len(ids))
+        q = ",".join(["?"] * len(ids))
         today = date.today().isoformat()
         self.conn.execute(
             f"""
