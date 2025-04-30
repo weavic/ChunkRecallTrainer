@@ -181,8 +181,8 @@ class ChunkRepo:
                 en_answer=row["en_answer"],
                 ef=row["ef"],
                 interval=row["interval"],
-                next_due_date=row["next_due_date"],
-                review_count=row["review_count"],
+                next_due_date=row.get("next_due_date", date.today()),
+                review_count=row.get("review_count", 0),
             )
             self.update(ch)
 
@@ -193,6 +193,23 @@ class ChunkRepo:
         self.conn.execute(
             f"DELETE FROM chunks WHERE user_id = ? AND id IN ({q})",
             (self.user_id, *ids),
+        )
+        self.conn.commit()
+
+    def reset_intervals(self, ids: list[int]) -> None:
+        if not ids:
+            return
+        q = ",".join("?" * len(ids))
+        today = date.today().isoformat()
+        self.conn.execute(
+            f"""
+            UPDATE chunks
+            SET interval = 0,
+                next_due_date = ?,
+                review_count = 0
+            WHERE user_id = ? AND id IN ({q})
+            """,
+            (today, self.user_id, *ids),
         )
         self.conn.commit()
 

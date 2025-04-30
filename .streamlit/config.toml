@@ -1,0 +1,5 @@
+[theme]
+base            = "dark"          # or "light"
+primaryColor    = "#6C63FF"       # button/link color
+secondaryBackground = "#1E1E25"   # background color
+font            = "Inter"

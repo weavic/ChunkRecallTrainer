@@ -18,6 +18,22 @@ if API_KEY and "api_key" not in st.session_state:
     st.session_state["api_key"] = API_KEY
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Custom CSS for styling
+# ──────────────────────────────────────────────────────────────────────────────
+st.markdown(
+    """
+    <style>
+    .stApp [data-testid="stDataFrame"]            {border-radius:12px;}
+    .stApp div[data-testid="stExpander"] > div    {border-radius:8px; box-shadow:0 2px 4px #0003;}
+    .stApp button[kind="secondary"]               {border-radius:8px;}
+    .stApp button[kind="secondary"]:hover         {background:#6C63FF22;}
+    .stApp [data-baseweb="tab-list"] button[data-selected="true"]   {border-color:#6C63FF;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ──────────────────────────────────────────────────────────────────────────────
 # UUID Generation as a User ID
 # ──────────────────────────────────────────────────────────────────────────────
 if "user_id" not in st.session_state:
@@ -181,24 +197,47 @@ with tab_manage:
         df[["id", "jp_prompt", "en_answer", "ef", "interval"]],
         num_rows="dynamic",
         use_container_width=True,
+        column_config={
+            "id": st.column_config.TextColumn("ID", disabled=True),
+            "jp_prompt": st.column_config.TextColumn("JP Prompt"),
+            "en_answer": st.column_config.TextColumn("EN Answer"),
+            "ef": st.column_config.NumberColumn(
+                "EF", min_value=1.0, max_value=5.0, step=0.1
+            ),
+            "interval": st.column_config.NumberColumn("Interval", min_value=0),
+        },
     )
 
-    save, col_del, col_reset = st.columns([1, 1, 1])
-    with save:
-        if st.button("💾 Save edits"):
+    left, mid, right = st.columns([1, 2, 1])
+    with right:
+        if st.button("💾 Save edits", use_container_width=True):
             repo.bulk_update(edited)
             st.success("Saved!")
 
-    with col_del:
-        sel_ids = st.multiselect("Select rows", edited["id"])
-        if st.button("🗑 Delete", disabled=not sel_ids):
-            repo.delete_many(sel_ids)
-            st.rerun()
+    with st.container(border=True):
+        col_sel, col_del, col_reset = st.columns([2, 1, 1])
 
-    with col_reset:
-        if st.button("🔄 Reset intervals", disabled=not sel_ids):
-            repo.reset_intervals(sel_ids)
-            st.rerun()
+        with col_sel:
+            sel_id = st.selectbox(
+                "Target row ID",
+                edited["id"],
+                label_visibility="visible",
+                index=None,
+            )
+
+        with col_del:
+            st.markdown("**Danger**", help="Delete Selected Chunk")
+            if st.button("🗑 Delete", disabled=sel_id is None, use_container_width=True):
+                repo.delete_many([sel_id])
+                st.rerun()
+
+        with col_reset:
+            st.markdown("**Reset review**", help="Reset review interval/EF")
+            if st.button(
+                "🔄 Reset intv", disabled=sel_id is None, use_container_width=True
+            ):
+                repo.reset_intervals([sel_id])
+                st.rerun()
 
     df["next_due_date"] = pd.to_datetime(df["next_due_date"]).dt.date
     due_today = (df["next_due_date"] <= date.today()).sum()
