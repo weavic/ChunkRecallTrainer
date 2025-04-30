@@ -186,7 +186,7 @@ with tab_practice:
             if ex:
                 st.markdown(f"**Prompt:** {ex.question}")
 
-                # temtative function to generate audio files : this will be replaced by a audio recorder
+                # tentative function to generate audio files : this will be replaced by a audio recorder
                 st.markdown("### 🎙️ Upload and Transcribe")
                 audio_file = st.file_uploader(
                     "Upload an audio file", type=["wav", "mp3"], key=f"audio_{ch.id}"
@@ -195,14 +195,16 @@ with tab_practice:
                     # Transcribe the audio file using OpenAI's Whisper API
                     with st.spinner("Transcribing..."):
                         client = OpenAI(api_key=st.session_state["api_key"])
-                        transcript = client.audio.transcriptions.create(
-                            model="whisper-1",
-                            file=audio_file,
-                            response_format="text",
-                        )
-                        if transcript:
-                            st.session_state[f"ans_{ch.id}"] = transcript
-                # --
+                        try:
+                            transcript = client.audio.transcriptions.create(
+                                model="whisper-1",
+                                file=audio_file,
+                                response_format="text",
+                            )
+                            if transcript:
+                                st.session_state[f"ans_{ch.id}"] = transcript
+                        except Exception as e:
+                            st.error(f"Transcription failed: {e}")
 
                 ans = st.text_area("Your answer", key=f"ans_{ch.id}")
 
