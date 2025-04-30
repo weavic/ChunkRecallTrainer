@@ -3,6 +3,9 @@
   "build": {
     "dockerfile": "Dockerfile.dev"
   },
+  "containerEnv": {
+    "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}",
+  },
   "customizations": {
     "vscode": {
       "settings": {

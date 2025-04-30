@@ -146,13 +146,11 @@ class ChunkRepo:
         self.conn.row_factory = sqlite3.Row
         Chunk.create_table(self.conn)
 
-    def add(self, chunk: Chunk) -> Chunk:
-        chunk.user_id = self.user_id
-        return chunk.save(self.conn)
-
-    def update(self, chunk: Chunk) -> None:
-        chunk.user_id = self.user_id
-        chunk.save(self.conn)
+    def get_all(self) -> List[Chunk]:
+        rows = self.conn.execute(
+            "SELECT * FROM chunks WHERE user_id = ?", (self.user_id,)
+        ).fetchall()
+        return [Chunk.from_row(r) for r in rows]
 
     def get_overdue(self, limit: int = 5) -> List[Chunk]:
         rows = self.conn.execute(
@@ -165,6 +163,38 @@ class ChunkRepo:
             (self.user_id, limit),
         ).fetchall()
         return [Chunk.from_row(r) for r in rows]
+
+    def add(self, chunk: Chunk) -> Chunk:
+        chunk.user_id = self.user_id
+        return chunk.save(self.conn)
+
+    def update(self, chunk: Chunk) -> None:
+        chunk.user_id = self.user_id
+        chunk.save(self.conn)
+
+    def bulk_update(self, df: pd.DataFrame) -> None:
+        for _, row in df.iterrows():
+            ch = Chunk(
+                id=row["id"],
+                user_id=self.user_id,
+                jp_prompt=row["jp_prompt"],
+                en_answer=row["en_answer"],
+                ef=row["ef"],
+                interval=row["interval"],
+                next_due_date=row["next_due_date"],
+                review_count=row["review_count"],
+            )
+            self.update(ch)
+
+    def delete_many(self, ids: list[int]) -> None:
+        if not ids:
+            return
+        q = ",".join(["?"] * len(ids))
+        self.conn.execute(
+            f"DELETE FROM chunks WHERE user_id = ? AND id IN ({q})",
+            (self.user_id, *ids),
+        )
+        self.conn.commit()
 
     def save_from_csv(self, file_obj) -> int:
         """Save chunks from a CSV file to the database."""
