@@ -1,11 +1,12 @@
 from datetime import date
 import streamlit as st
 import os
-from chunk import ChunkRepo, sm2_update, Chunk
+from chunk import ChunkRepo, Chunk
 import pandas as pd
 from io import StringIO
 import uuid
 from exercises import ExerciseGenerator
+from openai import OpenAI
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Streamlit app, page config, and repo
@@ -184,7 +185,29 @@ with tab_practice:
             ex = st.session_state.get(f"ex_{ch.id}")
             if ex:
                 st.markdown(f"**Prompt:** {ex.question}")
+
+                # tentative function to generate audio files : this will be replaced by a audio recorder
+                st.markdown("### 🎙️ Upload and Transcribe")
+                audio_file = st.file_uploader(
+                    "Upload an audio file", type=["wav", "mp3"], key=f"audio_{ch.id}"
+                )
+                if audio_file and "api_key" in st.session_state:
+                    # Transcribe the audio file using OpenAI's Whisper API
+                    with st.spinner("Transcribing..."):
+                        client = OpenAI(api_key=st.session_state["api_key"])
+                        try:
+                            transcript = client.audio.transcriptions.create(
+                                model="whisper-1",
+                                file=audio_file,
+                                response_format="text",
+                            )
+                            if transcript:
+                                st.session_state[f"ans_{ch.id}"] = transcript
+                        except Exception as e:
+                            st.error(f"Transcription failed: {e}")
+
                 ans = st.text_area("Your answer", key=f"ans_{ch.id}")
+
                 if st.button("✅ Check", key=f"chk_{ch.id}"):
                     fb = gen.review_answer(ans, ex, ch.en_answer)
                     st.markdown(fb.comment_md)
