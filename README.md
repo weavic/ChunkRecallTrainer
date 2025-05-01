@@ -9,11 +9,11 @@ Intermediate English learners often *recognise* useful sentence chunks but canno
 
 ## 🎯 Core Features
 
-1. **Record** chunks you want to retain 
+1. **Register** chunks you want to master
 2. **Review** with a 5-item quiz driven by the SM-2 algorithm (Hard / Good / Easy buttons)
-3. **Output prompts** for speaking or writing *(Whisper STT planned)*
+3. **Output prompts** for speaking or writing *(Whisper STT via upload supported; recording UI in beta)*
 4. **Progress tracking**: review streak, Ease-Factor graph, next due counts
-5. *(Planned)* **Variations generator**: GPT-4o paraphrases each chunk for flexibility
+5. **Variations generator**: GPT-4o paraphrases each chunk for flexibility
 
 ## 🛠 Data Tools (sidebar)
 | Icon | Action | Purpose |
@@ -42,7 +42,8 @@ Intermediate English learners often *recognise* useful sentence chunks but canno
 | ✅ | **LangChain prompt templates** | Paraphrase generator (v0.2) |
 | ✅ | **Env config for API key** | Support .env via devcontainer / Docker Compose (v0.2.1) |
 | ✅ | **UI polish** | Change UI layout and CSS (v0.2.1) |
-| ⏭️ | **Whisper speech-to-text** | Pronunciation drill (v0.3) |
+| ✅ | **Whisper speech-to-text** | Pronunciation drill via uploaded audio (recording UI in beta) (v0.3) |
+| ⏭️ | **LangSmith Visualization** | Workflow visualization and tracing via LangGraph + LangSmith (v0.3.1) |
 | ⏭️ | **Auth-based user management** | Google/Firebase login + secure chunk storage (v0.4) |
 
 ## 🚀 How to use
