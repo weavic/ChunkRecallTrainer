@@ -85,16 +85,3 @@ graph.add_edge("generate_exercise", "review_output")
 graph.set_finish_point("review_output")
 
 app = graph.compile()
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Assemble the graph
-# ──────────────────────────────────────────────────────────────────────────────
-graph = StateGraph(input=InputDict, output=OutputDict)
-graph.add_node("generate", generate_exercise)
-graph.add_node("review", review_output)
-graph.set_entry_point("generate")
-graph.add_edge("generate", "review")
-graph.add_edge("review", END)
-
-chain = graph.compile()
