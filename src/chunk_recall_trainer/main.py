@@ -5,8 +5,8 @@ from chunk import ChunkRepo, Chunk
 import pandas as pd
 from io import StringIO
 import uuid
-from exercises import ExerciseGenerator
 from openai import OpenAI
+from graph import app as graph_app
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Streamlit app, page config, and repo
@@ -96,7 +96,14 @@ with st.sidebar:
         en = st.text_area("EN Answer", height=80)
         submitted = st.form_submit_button("Add")
         if submitted and jp and en:
-            repo.add(Chunk(id=None, jp_prompt=jp, en_answer=en))
+            repo.add(
+                Chunk(
+                    id=None,
+                    user_id=st.session_state.user_id,
+                    jp_prompt=jp,
+                    en_answer=en,
+                )
+            )
             st.session_state.just_added = True  # Flag to indicate a new chunk was added
             st.rerun()
 
@@ -174,17 +181,25 @@ with tab_practice:
     # Always work on the first chunk in the queue
     chunk = queue[0]
 
-    gen = ExerciseGenerator(api_key=st.session_state["api_key"])
-
     for ch in repo.get_overdue():
         with st.expander(ch.jp_prompt):
-            if st.button("📝 Practice", key=f"q_{ch.id}"):
-                ex = gen.create_exercise(ch.jp_prompt, ch.en_answer)
-                st.session_state[f"ex_{ch.id}"] = ex
+            if st.button("📝 Practice", key=f"graph_{ch.id}"):
+                result = graph_app.invoke(
+                    {
+                        "jp_prompt": ch.jp_prompt,
+                        "en_answer": ch.en_answer,
+                        "user_input": st.session_state.get(f"ans_{ch.id}", ""),
+                    },
+                    config={"run-name": f"chunk-{ch.id}"},
+                )
+                if result and isinstance(result, dict) and "question" in result:
+                    st.session_state[f"ex_{ch.id}"] = result.get("question")
+                else:
+                    st.warning(f"⚠️ Unable to retrieve 'question' for chunk ID {ch.id}.")
 
-            ex = st.session_state.get(f"ex_{ch.id}")
-            if ex:
-                st.markdown(f"**Prompt:** {ex.question}")
+            question = st.session_state.get(f"ex_{ch.id}")
+            if question:
+                st.markdown(f"**Prompt:** {question}")
 
                 # tentative function to generate audio files : this will be replaced by a audio recorder
                 st.markdown("### 🎙️ Upload and Transcribe")
@@ -208,9 +223,16 @@ with tab_practice:
 
                 ans = st.text_area("Your answer", key=f"ans_{ch.id}")
 
-                if st.button("✅ Check", key=f"chk_{ch.id}"):
-                    fb = gen.review_answer(ans, ex, ch.en_answer)
-                    st.markdown(fb.comment_md)
+                if st.button("✅ Check", key=f"chk_{ch.id}", disabled=not ans.strip()):
+                    result = graph_app.invoke(
+                        {
+                            "jp_prompt": ch.jp_prompt,
+                            "en_answer": ch.en_answer,
+                            "user_input": ans,  # user's answer. this will be used to generate feedback
+                        },
+                        config={"run-name": f"chunk-{ch.id}"},
+                    )
+                    st.markdown(f"**Feedback**:\n\n{result.get('feedback')}")
 
 with tab_manage:
     st.subheader("📋 Chunk List")

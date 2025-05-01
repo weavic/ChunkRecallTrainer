@@ -24,11 +24,12 @@ Usage:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Any, List
+from typing import Dict, Any
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
-from langchain_core.output_parsers import StrOutputParser
+from langsmith import Client as LSClient
+import os
 
 
 # ────────────────────── Data containers ──────────────────────
@@ -101,6 +102,9 @@ class ExerciseGenerator:
 
         self.llm_fb = llm_raw.with_structured_output(FBSchema)
         self.template_fb = PromptTemplate.from_template(_PROMPT_REVIEW)
+
+        # LangSmith client (currently unused , will be removed with execises.py )
+        # client = LSClient(api_key=os.getenv("LANGSMITH_API_KEY"))
 
     # ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
     def create_exercise(self, jp: str, en_chunk: str) -> Exercise:

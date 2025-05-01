@@ -43,7 +43,7 @@ Intermediate English learners often *recognise* useful sentence chunks but canno
 | ✅ | **Env config for API key** | Support .env via devcontainer / Docker Compose (v0.2.1) |
 | ✅ | **UI polish** | Change UI layout and CSS (v0.2.1) |
 | ✅ | **Whisper speech-to-text** | Pronunciation drill via uploaded audio (recording UI in beta) (v0.3) |
-| ⏭️ | **LangSmith Visualization** | Workflow visualization and tracing via LangGraph + LangSmith (v0.3.1) |
+| ✅ | **LangSmith Visualization** | Workflow visualization and tracing via LangGraph + LangSmith (v0.3.2) |
 | ⏭️ | **Auth-based user management** | Google/Firebase login + secure chunk storage (v0.4) |
 
 ## 🚀 How to use
