@@ -103,7 +103,7 @@ class ExerciseGenerator:
         self.llm_fb = llm_raw.with_structured_output(FBSchema)
         self.template_fb = PromptTemplate.from_template(_PROMPT_REVIEW)
 
-        # LangSmith client (currently unused , remove if unnecessary)
+        # LangSmith client (currently unused , will be removed with execises.py )
         # client = LSClient(api_key=os.getenv("LANGSMITH_API_KEY"))
 
     # ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––

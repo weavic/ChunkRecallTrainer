@@ -5,7 +5,6 @@ from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
-import operator
 from langgraph.graph import StateGraph, END
 
 

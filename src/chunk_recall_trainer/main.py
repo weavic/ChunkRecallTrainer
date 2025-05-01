@@ -192,7 +192,10 @@ with tab_practice:
                     },
                     config={"run-name": f"chunk-{ch.id}"},
                 )
-                st.session_state[f"ex_{ch.id}"] = result.get("question")
+                if result and isinstance(result, dict) and "question" in result:
+                    st.session_state[f"ex_{ch.id}"] = result.get("question")
+                else:
+                    st.warning(f"⚠️ Unable to retrieve 'question' for chunk ID {ch.id}.")
 
             question = st.session_state.get(f"ex_{ch.id}")
             if question:
