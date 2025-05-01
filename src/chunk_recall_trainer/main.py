@@ -96,7 +96,14 @@ with st.sidebar:
         en = st.text_area("EN Answer", height=80)
         submitted = st.form_submit_button("Add")
         if submitted and jp and en:
-            repo.add(Chunk(id=None, jp_prompt=jp, en_answer=en))
+            repo.add(
+                Chunk(
+                    id=None,
+                    user_id=st.session_state.user_id,
+                    jp_prompt=jp,
+                    en_answer=en,
+                )
+            )
             st.session_state.just_added = True  # Flag to indicate a new chunk was added
             st.rerun()
 
