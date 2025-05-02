@@ -7,6 +7,7 @@ from io import StringIO
 import uuid
 from openai import OpenAI
 from graph import app as graph_app
+from streamlit_firebase_auth import FirebaseAuth
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Streamlit app, page config, and repo
@@ -35,20 +36,61 @@ st.markdown(
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
-# UUID Generation as a User ID
+# login with Firebase
 # ──────────────────────────────────────────────────────────────────────────────
-if "user_id" not in st.session_state:
-    query_params = st.query_params
-    uid = query_params.get("uid")
-    if "uid" in query_params:
-        st.session_state.user_id = uid if isinstance(uid, str) else uid[0]
+# ALLOWED_EMAILS should be a comma-separated list of authorized email addresses (e.g., "user1@example.com,user2@example.com").
+allowed_emails = os.getenv("ALLOWED_EMAILS", "")
+allowed_list = (
+    [e.strip() for e in allowed_emails.split(",") if e.strip()]
+    if allowed_emails
+    else None  # None indicates no restriction
+)
+
+auth = FirebaseAuth(
+    {
+        "apiKey": os.getenv("FIREBASE_API_KEY"),
+        "authDomain": os.getenv("FIREBASE_AUTH_DOMAIN"),
+        "measurementId": os.getenv("FIREBASE_MEASUREMENT_ID"),
+    }
+)
+user = auth.check_session()
+if user:
+    if allowed_list is not None and user["email"] not in allowed_list:
+        st.sidebar.error("You are not authorized to use this app.")
+        st.stop()
     else:
-        st.session_state.user_id = str(uuid.uuid4())
-        st.query_params["uid"] = st.session_state.user_id
+        st.sidebar.success(f"Signed in as {user['email']}")
+        st.session_state["user_id"] = user["uid"]
 
-    user_id = st.session_state.user_id
-    st.sidebar.markdown(f"**User ID:** {user_id}")
+else:
+    st.sidebar.markdown("### 🔑 Login")
+    user = auth.login_form()
+    if user:
+        st.session_state["user_id"] = user["uid"]
+        st.sidebar.success(f"Signed in as {user['email']}")
+    else:
+        st.sidebar.error("Login failed")
+        st.session_state["user_id"] = None
+        st.sidebar.info("Please login to use the app")
+        st.stop()
 
+if "user_id" not in st.session_state:
+    st.sidebar.error("You must be logged in to use this app.")
+    st.stop()
+
+logout_stable = False  # Set to True when logout functionality is implemented
+
+if logout_stable and st.sidebar.button("Logout", use_container_width=True):
+    logoutResult = auth.logout_form()
+    st.write("Logging out...", logoutResult)
+    st.sidebar.success("Logged out")
+    st.session_state["user_id"] = None
+    st.stop()
+elif not logout_stable:
+    st.sidebar.info("Logout functionality is currently unavailable.")
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Initialize the session state
 repo = ChunkRepo(user_id=st.session_state.user_id)
 
 if st.session_state.get("just_added"):
