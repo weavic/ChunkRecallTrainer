@@ -70,7 +70,7 @@ else:
     else:
         st.sidebar.error("Login failed")
         st.session_state["user_id"] = None
-        st.sidebar.success("Please login to use the app")
+        st.sidebar.info("Please login to use the app")
         st.stop()
 
 if "user_id" not in st.session_state:
