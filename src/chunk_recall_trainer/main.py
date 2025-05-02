@@ -39,7 +39,11 @@ st.markdown(
 # login with Firebase
 # ──────────────────────────────────────────────────────────────────────────────
 allowed_emails = os.getenv("ALLOWED_EMAILS", "")
-allowed_list = [e.strip() for e in allowed_emails.split(",") if e.strip()]
+allowed_list = (
+    [e.strip() for e in allowed_emails.split(",") if e.strip()]
+    if allowed_emails
+    else None  # None indicates no restriction
+)
 
 auth = FirebaseAuth(
     {
@@ -50,7 +54,7 @@ auth = FirebaseAuth(
 )
 user = auth.check_session()
 if user:
-    if user["email"] not in allowed_list:
+    if allowed_list is not None and user["email"] not in allowed_list:
         st.sidebar.error("You are not authorized to use this app.")
         st.stop()
     else:
@@ -73,12 +77,17 @@ if "user_id" not in st.session_state:
     st.error("You must be logged in to use this app.")
     st.stop()
 
-if st.sidebar.button("Logout", use_container_width=True):
-    rtn = auth.logout_form()  # currently not working
+# Hide or disable the logout button until the functionality is stable
+logout_stable = False  # Set to True when logout functionality is implemented
+
+if logout_stable and st.sidebar.button("Logout", use_container_width=True):
+    rtn = auth.logout_form()
     st.write("Logging out...", rtn)
     st.sidebar.success("Logged out")
     st.session_state["user_id"] = None
     st.stop()
+elif not logout_stable:
+    st.sidebar.info("Logout functionality is currently unavailable.")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Initialize the session state
