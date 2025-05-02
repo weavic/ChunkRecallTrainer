@@ -38,6 +38,7 @@ st.markdown(
 # ──────────────────────────────────────────────────────────────────────────────
 # login with Firebase
 # ──────────────────────────────────────────────────────────────────────────────
+# ALLOWED_EMAILS should be a comma-separated list of authorized email addresses (e.g., "user1@example.com,user2@example.com").
 allowed_emails = os.getenv("ALLOWED_EMAILS", "")
 allowed_list = (
     [e.strip() for e in allowed_emails.split(",") if e.strip()]
@@ -77,7 +78,6 @@ if "user_id" not in st.session_state:
     st.error("You must be logged in to use this app.")
     st.stop()
 
-# Hide or disable the logout button until the functionality is stable
 logout_stable = False  # Set to True when logout functionality is implemented
 
 if logout_stable and st.sidebar.button("Logout", use_container_width=True):
