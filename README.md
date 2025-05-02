@@ -44,7 +44,8 @@ Intermediate English learners often *recognise* useful sentence chunks but canno
 | ✅ | **UI polish** | Change UI layout and CSS (v0.2.1) |
 | ✅ | **Whisper speech-to-text** | Pronunciation drill via uploaded audio (recording UI in beta) (v0.3) |
 | ✅ | **LangSmith Visualization** | Workflow visualization and tracing via LangGraph + LangSmith (v0.3.2) |
-| ⏭️ | **Auth-based user management** | Google/Firebase login + secure chunk storage (v0.4) |
+| ✅ | **Auth-based user management** | Google/Firebase login + secure chunk storage (v0.4) |
+| ⏭️ | **Cloud DB migration** | Firestore/Supabase multi-user storage (v0.5) |
 
 ## 🚀 How to use
 
@@ -56,6 +57,11 @@ Intermediate English learners often *recognise* useful sentence chunks but canno
 3. **Save progress**  
    - Hit **Export CSV** to export your updated deck.  
    - Need a clean slate? Use **Reset database** ⚠️ (data is wiped).
+
+## ❗ Known Issue
+* Logout is not fully supported.
+This app is intended for limited internal use. Only whitelisted Google accounts can access it, and logout is currently not functional due to limitations in Firebase Web SDK with Streamlit. If necessary, you can clear the session manually in your browser.
+
 
 ## ⚡ Quick Start 
 
