@@ -75,14 +75,14 @@ else:
         st.stop()
 
 if "user_id" not in st.session_state:
-    st.error("You must be logged in to use this app.")
+    st.sidebar.error("You must be logged in to use this app.")
     st.stop()
 
 logout_stable = False  # Set to True when logout functionality is implemented
 
 if logout_stable and st.sidebar.button("Logout", use_container_width=True):
-    rtn = auth.logout_form()
-    st.write("Logging out...", rtn)
+    logoutResult = auth.logout_form()
+    st.write("Logging out...", logoutResult)
     st.sidebar.success("Logged out")
     st.session_state["user_id"] = None
     st.stop()
