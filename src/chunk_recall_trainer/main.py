@@ -45,7 +45,7 @@ auth = FirebaseAuth(
     {
         "apiKey": os.getenv("FIREBASE_API_KEY"),
         "authDomain": os.getenv("FIREBASE_AUTH_DOMAIN"),
-        "mesurmentId": os.getenv("FIREBASE_MEASUREMENT_ID"),
+        "measurementId": os.getenv("FIREBASE_MEASUREMENT_ID"),
     }
 )
 user = auth.check_session()
@@ -75,7 +75,7 @@ if "user_id" not in st.session_state:
 
 if st.sidebar.button("Logout", use_container_width=True):
     rtn = auth.logout_form()  # currently not working
-    print("Logging out...", rtn)
+    st.write("Logging out...", rtn)
     st.sidebar.success("Logged out")
     st.session_state["user_id"] = None
     st.stop()
