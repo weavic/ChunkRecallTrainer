@@ -6,3 +6,5 @@ pydantic>=2.6
 openai>=1.0.0
 langsmith
 langgraph
+streamlit-firebase-auth
+firebase_admin
