@@ -27,10 +27,11 @@ jobs:
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         # If you have test-specific dependencies, you might install them here
         # e.g., pip install pytest mock
+        # Assuming pytest is in requirements.txt, it will be installed in the previous step.
 
-    - name: Test with unittest
+    - name: Test with pytest
       run: |
-        python -m unittest discover -s tests -p "test_*.py"
+        pytest
       env:
         # If your tests require environment variables, even for mocked scenarios,
         # define them here. For actual secrets, use GitHub repository secrets.

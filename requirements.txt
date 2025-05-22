@@ -8,6 +8,3 @@ langsmith
 langgraph
 streamlit-firebase-auth
 firebase_admin
-langchain
-python-dotenv
-pytest

@@ -46,9 +46,10 @@ mock_chat_open_ai_class = MagicMock()
 # or more globally 'langchain_openai.ChatOpenAI' if that's easier.
 # Let's try patching it directly where it's imported in graph.py for more targeted mocking.
 
-with patch('chunk_recall_trainer.graph.ChatOpenAI', new=mock_chat_open_ai_class):
+# The correct path should be 'src.chunk_recall_trainer.graph.ChatOpenAI' because 'src' is in sys.path
+with patch('src.chunk_recall_trainer.graph.ChatOpenAI', new=mock_chat_open_ai_class):
     # Now import the graph elements. They will be defined using the mocked ChatOpenAI.
-    from chunk_recall_trainer.graph import (
+    from src.chunk_recall_trainer.graph import (
         GraphState,
         generate_exercise_node,
         review_output_node,
@@ -108,8 +109,8 @@ class TestGraphLogic(unittest.TestCase):
         # from our initial patch.
         # We need to access the `llm_ex` that the node `generate_exercise_node` sees.
         
-        # To do this, we patch `llm_ex` within the `chunk_recall_trainer.graph` module for this test.
-        with patch('chunk_recall_trainer.graph.llm_ex') as mock_graph_llm_ex:
+        # To do this, we patch `llm_ex` within the `src.chunk_recall_trainer.graph` module for this test.
+        with patch('src.chunk_recall_trainer.graph.llm_ex') as mock_graph_llm_ex:
             mock_graph_llm_ex.invoke.return_value = ExerciseSchema(question="Generated Q", answer_key="Generated AK")
             
             result_state = generate_exercise_node(initial_state)
@@ -129,7 +130,7 @@ class TestGraphLogic(unittest.TestCase):
             "question": "Existing Q", "answer_key": "Existing AK", 
             "feedback": None
         }
-        with patch('chunk_recall_trainer.graph.llm_ex') as mock_graph_llm_ex:
+        with patch('src.chunk_recall_trainer.graph.llm_ex') as mock_graph_llm_ex:
             result_state = generate_exercise_node(initial_state)
             
             self.assertEqual(result_state["question"], "Existing Q")
@@ -145,7 +146,7 @@ class TestGraphLogic(unittest.TestCase):
             "question": "Q1", "answer_key": "Hello", 
             "feedback": None
         }
-        with patch('chunk_recall_trainer.graph.llm_fb') as mock_graph_llm_fb:
+        with patch('src.chunk_recall_trainer.graph.llm_fb') as mock_graph_llm_fb:
             mock_graph_llm_fb.invoke.return_value = ReviewSchema(score=3, better="Hola", comment="Good try")
             
             result_state = review_output_node(initial_state)
@@ -168,7 +169,7 @@ class TestGraphLogic(unittest.TestCase):
             "jp_prompt": "こんにちは", "en_answer": "Hello",
             "user_input": "Hi", "question": "Q1", "answer_key": None, "feedback": None
         }
-        with patch('chunk_recall_trainer.graph.llm_fb') as mock_graph_llm_fb:
+        with patch('src.chunk_recall_trainer.graph.llm_fb') as mock_graph_llm_fb:
             result_state_1 = review_output_node(state_no_input)
             self.assertEqual(result_state_1["feedback"], "Error: User input or model answer key missing for review.")
             mock_graph_llm_fb.invoke.assert_not_called()
@@ -198,8 +199,8 @@ class TestGraphLogic(unittest.TestCase):
     # We need to mock the `invoke` methods of `llm_ex` and `llm_fb` that are part of the compiled graph.
     # These are the instances created in graph.py at module level.
     # The patch at the top of the file should ensure these are mocks.
-    @patch('chunk_recall_trainer.graph.llm_ex') # patch the object within graph.py
-    @patch('chunk_recall_trainer.graph.llm_fb')  # patch the object within graph.py
+    @patch('src.chunk_recall_trainer.graph.llm_ex') # patch the object within src.chunk_recall_trainer.graph
+    @patch('src.chunk_recall_trainer.graph.llm_fb')  # patch the object within src.chunk_recall_trainer.graph
     def test_graph_app_question_generation_only(self, mock_llm_fb_in_graph, mock_llm_ex_in_graph):
         """Test compiled graph for question generation path."""
         mock_llm_ex_in_graph.invoke.return_value = ExerciseSchema(question="Test Q", answer_key="Test AK")
@@ -219,8 +220,8 @@ class TestGraphLogic(unittest.TestCase):
         mock_llm_ex_in_graph.invoke.assert_called_once()
         mock_llm_fb_in_graph.invoke.assert_not_called()
 
-    @patch('chunk_recall_trainer.graph.llm_ex')
-    @patch('chunk_recall_trainer.graph.llm_fb')
+    @patch('src.chunk_recall_trainer.graph.llm_ex')
+    @patch('src.chunk_recall_trainer.graph.llm_fb')
     def test_graph_app_feedback_generation(self, mock_llm_fb_in_graph, mock_llm_ex_in_graph):
         """Test compiled graph for feedback generation path."""
         # generate_exercise_node will be called, but it should skip LLM call
