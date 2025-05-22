@@ -2,16 +2,16 @@ name: Python Tests
 
 on:
   push:
-    branches: [ main ] # Or your default branch
+    branches: [ main ]
   pull_request:
-    branches: [ main ] # Or your default branch
+    branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.9", "3.10"] # You can choose one or more Python versions
+        python-version: ["3.11"]
 
     steps:
     - uses: actions/checkout@v3
