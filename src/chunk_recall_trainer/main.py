@@ -1,27 +1,58 @@
+"""
+Main application file for the Chunk Recall Trainer.
+
+This Streamlit application provides a user interface for practicing language chunks
+(e.g., Japanese phrases and their English equivalents) using a spaced repetition
+algorithm (SM2). It integrates Firebase for user authentication, OpenAI for
+exercise generation and feedback (via a LangGraph chain), and a local SQLite
+database (via the `chunk` module) for storing user-specific chunk data.
+
+The UI is structured as follows:
+- A sidebar for user authentication (login/logout), data management operations
+  (CSV import/export, adding individual chunks, database reset), and application
+  settings (OpenAI API key input).
+- A main content area with two tabs:
+    - "Practice" tab: Displays chunks due for review, allows users to generate
+      practice exercises, input their answers (textually or via audio upload
+      which is then transcribed), and receive AI-generated feedback on their
+      performance. Exercise generation and feedback are handled by the LangGraph app.
+    - "Manage Chunks" tab: Shows a list of all chunks for the logged-in user,
+      allowing for editing of chunk content, EF/interval values, and deletion
+      of selected chunks. Also displays overall statistics about the chunk collection.
+
+Session state is used extensively to manage the practice queue, user inputs,
+generated questions/feedback, and API keys.
+"""
 from datetime import date
 import streamlit as st
-import os
-from chunk import ChunkRepo, Chunk
-import pandas as pd
-from io import StringIO
-import uuid
-from openai import OpenAI
-from graph import app as graph_app
-from streamlit_firebase_auth import FirebaseAuth
+# import os # Not directly used; API keys and configs are managed via AppConfig.
+from chunk import ChunkRepo, Chunk # Data models and repository for chunks.
+import pandas as pd # For CSV import/export and data display.
+from io import StringIO # For handling CSV data in memory.
+import uuid # For generating unique keys for Streamlit widgets.
+from openai import OpenAI # For audio transcription using Whisper API.
+from graph import app as graph_app # LangGraph application for exercise/feedback.
+# FirebaseAuth is handled within the auth module.
+from .config import app_config # Centralized application configuration.
+from .auth import initialize_auth, authenticate_user, render_logout_button # Auth functions.
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Streamlit app, page config, and repo
+# Application Setup: Page Configuration and Global Settings
 # ──────────────────────────────────────────────────────────────────────────────
+# Configure the Streamlit page. This must be the first Streamlit command executed.
 st.set_page_config(page_title="Chunk Recall Trainer", page_icon="📚", layout="centered")
 
-API_KEY = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
-# Set the API key in session state if it exists
-if API_KEY and "api_key" not in st.session_state:
-    st.session_state["api_key"] = API_KEY
+# Initialize OpenAI API key in session state from AppConfig if not already set by the user.
+# This key is crucial for:
+# 1. The LangGraph application (`graph_app`) which makes LLM calls for exercises/feedback.
+# 2. Direct OpenAI calls, such as using the Whisper API for audio transcription.
+if app_config.openai_api_key and "api_key" not in st.session_state:
+    st.session_state["api_key"] = app_config.openai_api_key
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Custom CSS for styling
+# Custom CSS Styling
 # ──────────────────────────────────────────────────────────────────────────────
+# Apply custom CSS to enhance the visual appearance of Streamlit elements.
 st.markdown(
     """
     <style>
@@ -36,250 +67,374 @@ st.markdown(
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
-# login with Firebase
 # ──────────────────────────────────────────────────────────────────────────────
-# ALLOWED_EMAILS should be a comma-separated list of authorized email addresses (e.g., "user1@example.com,user2@example.com").
-allowed_emails = os.getenv("ALLOWED_EMAILS", "")
-allowed_list = (
-    [e.strip() for e in allowed_emails.split(",") if e.strip()]
-    if allowed_emails
-    else None  # None indicates no restriction
-)
+# User Authentication and Initialization
+# ──────────────────────────────────────────────────────────────────────────────
+# Initialize the Firebase authentication service using configurations from `app_config`.
+auth_handler = initialize_auth(app_config)
+# Perform user authentication. This function handles session checks, displays a login
+# form in the sidebar (if needed), and validates user email against an allowed list.
+# It calls `st.stop()` internally if authentication fails or the user is not authorized,
+# preventing the rest of the script from running.
+current_user = authenticate_user(auth_handler, app_config)
 
-auth = FirebaseAuth(
-    {
-        "apiKey": os.getenv("FIREBASE_API_KEY"),
-        "authDomain": os.getenv("FIREBASE_AUTH_DOMAIN"),
-        "measurementId": os.getenv("FIREBASE_MEASUREMENT_ID"),
-    }
-)
-user = auth.check_session()
-if user:
-    if allowed_list is not None and user["email"] not in allowed_list:
-        st.sidebar.error("You are not authorized to use this app.")
-        st.stop()
-    else:
-        st.sidebar.success(f"Signed in as {user['email']}")
-        st.session_state["user_id"] = user["uid"]
-
+# If authentication is successful, `current_user` contains user details.
+# Store the unique user ID in session state for use throughout the app.
+if current_user:
+    st.session_state["user_id"] = current_user["uid"]
 else:
-    st.sidebar.markdown("### 🔑 Login")
-    user = auth.login_form()
-    if user:
-        st.session_state["user_id"] = user["uid"]
-        st.sidebar.success(f"Signed in as {user['email']}")
-    else:
-        st.sidebar.error("Login failed")
-        st.session_state["user_id"] = None
-        st.sidebar.info("Please login to use the app")
-        st.stop()
+    # This is a fallback; `authenticate_user` should have already stopped execution.
+    # If `current_user` is None, it means auth failed or user is not yet logged in.
+    if "user_id" not in st.session_state or not st.session_state.get("user_id"):
+         st.sidebar.error("Critical: Authentication process did not complete. Please try again.")
+         st.stop() # Ensure app stops if control reaches here without a user_id.
 
-if "user_id" not in st.session_state:
-    st.sidebar.error("You must be logged in to use this app.")
+# Initialize the ChunkRepo for the authenticated user. This provides access to
+# user-specific chunk data stored in the database.
+# This step must occur after `st.session_state.user_id` is confirmed.
+if "user_id" in st.session_state and st.session_state.user_id:
+    try:
+        # Create a repository instance scoped to the current user.
+        repo = ChunkRepo(user_id=st.session_state.user_id)
+    except Exception as e: # Catch potential errors during database initialization.
+        st.error(f"Fatal Error: Could not initialize user data repository. Details: {e}")
+        st.stop() # Stop the app if the repo cannot be initialized.
+else:
+    # This should be an unreachable state if authentication flow is correct.
+    st.error("Fatal Error: User ID is missing after authentication. Cannot initialize data.")
     st.stop()
 
-logout_stable = False  # Set to True when logout functionality is implemented
-
-if logout_stable and st.sidebar.button("Logout", use_container_width=True):
-    logoutResult = auth.logout_form()
-    st.write("Logging out...", logoutResult)
-    st.sidebar.success("Logged out")
-    st.session_state["user_id"] = None
-    st.stop()
-elif not logout_stable:
-    st.sidebar.info("Logout functionality is currently unavailable.")
+# Render the logout button in the sidebar.
+# The `logout_stable` parameter can be used to enable/disable the button (e.g., during development).
+render_logout_button(auth_handler, logout_stable=False) 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Initialize the session state
-repo = ChunkRepo(user_id=st.session_state.user_id)
-
+# Session State Flags & Toast Notifications
+# ──────────────────────────────────────────────────────────────────────────────
+# These flags are used to trigger one-time toast notifications after certain actions.
+# They are set within form submission logic and reset here after display.
 if st.session_state.get("just_added"):
-    st.toast("✅ Chunk saved!")
-    st.session_state.just_added = False
+    st.toast("✅ Chunk successfully saved!")
+    st.session_state.just_added = False # Reset the flag
 if st.session_state.get("just_reset"):
-    st.toast("🗑️ Database cleared!", icon="🔥")
-    st.session_state.just_reset = False
+    st.toast("🗑️ All chunks have been cleared from the database!", icon="🔥")
+    st.session_state.just_reset = False # Reset the flag
 
 # ──────────────────────────────────────────────────────────────────────────────
-# UI. Sidebar
+# Sidebar UI: Data Management and Settings
 # ──────────────────────────────────────────────────────────────────────────────
+# The Streamlit sidebar is populated by authentication functions (login/logout messages)
+# and then by the data management and settings sections defined below.
 with st.sidebar:
-    st.header("📂 Data")
-    # ──────────────────────────────────────────────────────────────────────────────
-    # CSV Import
-    # ──────────────────────────────────────────────────────────────────────────────
-    uploaded = st.file_uploader("Upload CSV", type="csv")
-    if uploaded is not None:
-        df = pd.read_csv(uploaded)
-
-        csv_string = df.to_csv(index=False)
-        csv_buffer = StringIO(csv_string)
-
-        count = repo.save_from_csv(csv_buffer)
-        st.sidebar.success(f"✅ Imported {count} chunks!")
-    st.markdown("---")
-    # ──────────────────────────────────────────────────────────────────────────────
-    # CSV Export
-    # ──────────────────────────────────────────────────────────────────────────────
-    csv = repo.export_all()
-    st.download_button(
-        label="💾 Export CSV",
-        data=csv,
-        file_name="chunks_export.csv",
-        mime="text/csv",
-        help="Download your current chunk deck as CSV",
-    )
-    # ──────────────────────────────────────────────────────────────────────────────
-    # Single Chunk Add Form
-    # ──────────────────────────────────────────────────────────────────────────────
-    with st.form("add_chunk"):
-        st.markdown("### ➕ Add a single chunk")
-        jp = st.text_area("JP Prompt", height=80)
-        en = st.text_area("EN Answer", height=80)
-        submitted = st.form_submit_button("Add")
-        if submitted and jp and en:
-            repo.add(
-                Chunk(
-                    id=None,
-                    user_id=st.session_state.user_id,
-                    jp_prompt=jp,
-                    en_answer=en,
-                )
-            )
-            st.session_state.just_added = True  # Flag to indicate a new chunk was added
-            st.rerun()
-
-    # ──────────────────────────────────────────────────────────────────────────────
-    # Dangerous chunk deletion
-    # ──────────────────────────────────────────────────────────────────────────────
-    st.markdown("### ⚠️ Dangerous chunk deletion")
-    with st.form("reset_db"):
-        confirm = st.checkbox("Yes, delete **all** chunks")
-        reset = st.form_submit_button("Reset database", type="primary")
-        if reset and confirm:
-            repo.reset()
-            st.session_state.just_reset = True
-
-            # clear the session state
-            st.session_state.queue = []
-            st.session_state.queue_date = date.today()
-            st.session_state.queue_total = 0
-            st.rerun()
-
-    # ──────────────────────────────────────────────────────────────────────────────
-    # Settings
-    # ──────────────────────────────────────────────────────────────────────────────
-    st.header("🛠 Settings")
-    # ──────────────────────────────────────────────────────────────────────────────
-    # API Key Input: if the API key is set in the environment, disable the input
-    # ──────────────────────────────────────────────────────────────────────────────
-    api_key = st.text_input(
-        "OpenAI API Key",
-        type="password",
-        value=st.session_state.get("api_key", ""),
-        help="Enter your OpenAI API key",
-        disabled=bool(API_KEY),
-    )
-    if api_key and api_key != st.session_state.get("api_key"):
-        st.session_state["api_key"] = api_key
-
-# ──────────────────────────────────────────────────────────────────────────────
-# UI – prompt & reveal logic
-# ──────────────────────────────────────────────────────────────────────────────
-# ──────────────────────────────────────────────────────────────────────────────
-# Session‑scoped queue (max 5 overdue chunks per day)
-# ──────────────────────────────────────────────────────────────────────────────
-if "queue_date" not in st.session_state or st.session_state.queue_date != date.today():
-    st.session_state.queue = repo.get_overdue(limit=5)
-    st.session_state.queue_date = date.today()
-    st.session_state.queue_total = len(st.session_state.queue)
-
-queue = st.session_state.queue
-remaining = len(queue)
-
-col1, col2 = st.columns([3, 1])
-with col1:
-    st.title("Chunk Recall Trainer")
-with col2:
-    total = st.session_state.queue_total
-    current = total - remaining + 1
-    st.metric("Progress", f"{current}/{total}")
-
-# Tabbed interface for practice and management
-tab_practice, tab_manage = st.tabs(["💬 Practice", "📋 Manage Chunks"])
-
-with tab_practice:
-    if not st.session_state.get("api_key"):
-        st.warning("⚠️ Please enter your OpenAI API key in the sidebar.")
-        st.stop()
-
-    # ──────────────────────────────────────────────────────────────────────────────
-    # Exit early when queue is empty
-    # ──────────────────────────────────────────────────────────────────────────────
-    if remaining == 0:
-        st.success("🎉 All caught up for today! See you tomorrow.")
-        st.stop()
-
-    # Always work on the first chunk in the queue
-    chunk = queue[0]
-
-    for ch in repo.get_overdue():
-        with st.expander(ch.jp_prompt):
-            if st.button("📝 Practice", key=f"graph_{ch.id}"):
-                result = graph_app.invoke(
-                    {
-                        "jp_prompt": ch.jp_prompt,
-                        "en_answer": ch.en_answer,
-                        "user_input": st.session_state.get(f"ans_{ch.id}", ""),
-                    },
-                    config={"run-name": f"chunk-{ch.id}"},
-                )
-                if result and isinstance(result, dict) and "question" in result:
-                    st.session_state[f"ex_{ch.id}"] = result.get("question")
-                else:
-                    st.warning(f"⚠️ Unable to retrieve 'question' for chunk ID {ch.id}.")
-
-            question = st.session_state.get(f"ex_{ch.id}")
-            if question:
-                st.markdown(f"**Prompt:** {question}")
-
-                # tentative function to generate audio files : this will be replaced by a audio recorder
-                st.markdown("### 🎙️ Upload and Transcribe")
-                audio_file = st.file_uploader(
-                    "Upload an audio file", type=["wav", "mp3"], key=f"audio_{ch.id}"
-                )
-                if audio_file and "api_key" in st.session_state:
-                    # Transcribe the audio file using OpenAI's Whisper API
-                    with st.spinner("Transcribing..."):
-                        client = OpenAI(api_key=st.session_state["api_key"])
-                        try:
-                            transcript = client.audio.transcriptions.create(
-                                model="whisper-1",
-                                file=audio_file,
-                                response_format="text",
+    # Data management features are available only if a user is logged in and the
+    # data repository (`repo`) has been successfully initialized.
+    if "user_id" in st.session_state and st.session_state.user_id and 'repo' in locals():
+        st.header("📂 Data Management")
+        
+        # CSV Import section
+        uploaded_csv_file = st.file_uploader("Import Chunks from CSV", type="csv", key="csv_uploader")
+        if uploaded_csv_file is not None:
+            try:
+                df_import = pd.read_csv(uploaded_csv_file)
+                # Convert DataFrame to a CSV string in memory for the repo method
+                csv_in_memory = StringIO()
+                df_import.to_csv(csv_in_memory, index=False)
+                csv_in_memory.seek(0) # Rewind buffer to the beginning for reading
+                
+                imported_count = repo.save_from_csv(csv_in_memory)
+                st.sidebar.success(f"✅ Successfully imported {imported_count} chunks!")
+                # Consider st.rerun() or other UI update mechanism if changes need immediate reflection
+            except Exception as e:
+                st.sidebar.error(f"CSV import failed: {e}")
+        st.markdown("---") # Visual separator
+        
+        # CSV Export section
+        all_chunks_as_csv_str = repo.export_all()
+        st.download_button(
+            label="💾 Export All Chunks to CSV",
+            data=all_chunks_as_csv_str, # Must be string or bytes
+            file_name="chunks_export.csv",
+            mime="text/csv",
+            help="Download all your chunks in a CSV file.",
+            key="export_csv_button" # Unique key for the widget
+        )
+        
+        # Form for adding a single new chunk
+        with st.form("add_chunk_form", clear_on_submit=True):
+            st.markdown("### ➕ Add a New Chunk")
+            new_jp_prompt_input = st.text_area("Japanese Prompt (JP)", height=80, key="new_jp_prompt_text_area")
+            new_en_answer_input = st.text_area("English Answer/Chunk (EN)", height=80, key="new_en_answer_text_area")
+            add_chunk_submit_button = st.form_submit_button("Add Chunk")
+            
+            if add_chunk_submit_button:
+                if new_jp_prompt_input and new_en_answer_input: # Basic validation
+                    try:
+                        # The Chunk class might handle ID generation if `id=None` is passed.
+                        # user_id must be from the active session.
+                        repo.add(
+                            Chunk( 
+                                id=None, # Database will typically auto-generate ID
+                                user_id=st.session_state.user_id,
+                                jp_prompt=new_jp_prompt_input,
+                                en_answer=new_en_answer_input,
+                                # EF, interval, etc., will be set to defaults by Pydantic model or DB
                             )
-                            if transcript:
-                                st.session_state[f"ans_{ch.id}"] = transcript
-                        except Exception as e:
-                            st.error(f"Transcription failed: {e}")
+                        )
+                        st.session_state.just_added = True # Trigger toast notification
+                        st.rerun() # Refresh UI to reflect the new chunk and update stats/queue
+                    except Exception as e:
+                        st.sidebar.error(f"Failed to add chunk: {e}")
+                else:
+                    st.sidebar.warning("Both Japanese and English fields are required to add a new chunk.")
+        
+        # "Danger Zone" for operations like resetting the database
+        st.markdown("### ⚠️ Danger Zone")
+        with st.form("reset_database_form"):
+            st.markdown("This will delete **all** your chunks. This action cannot be undone.")
+            confirm_reset_checkbox = st.checkbox("Yes, I understand and wish to delete all my chunks.", key="confirm_reset_db_checkbox")
+            reset_db_submit_button = st.form_submit_button(
+                "Reset Entire Database for This User", 
+                type="primary", # Emphasizes caution
+                disabled=not confirm_reset_checkbox # Button disabled until checkbox is ticked
+            )
+            
+            if reset_db_submit_button and confirm_reset_checkbox:
+                try:
+                    repo.reset() # Method to delete all chunks for the current user
+                    st.session_state.just_reset = True # Trigger toast notification
+                    # Clear any session state variables that might hold outdated data
+                    st.session_state.queue = []
+                    st.session_state.queue_date = date.today() # Reset queue date
+                    st.session_state.queue_total = 0
+                    # Potentially clear other session states like q_*, ak_*, fb_*, ans_val_* if they exist
+                    st.rerun() # Refresh UI
+                except Exception as e:
+                    st.sidebar.error(f"Database reset operation failed: {e}")
 
-                ans = st.text_area("Your answer", key=f"ans_{ch.id}")
+    # Settings section for API Key configuration.
+    # This section is available regardless of user login status, as API key might be
+    # needed by parts of the app or for initial configuration.
+    st.header("🛠 Application Settings")
+    # Allow users to input their OpenAI API key if it's not pre-configured via environment variables or Streamlit secrets.
+    # `app_config.openai_api_key` provides the value from env/secrets (if any).
+    # `st.session_state.api_key` stores the key active for the current session, which could be
+    # the one from `app_config` or one entered by the user.
+    user_provided_api_key = st.text_input( 
+        "OpenAI API Key",
+        type="password", # Masks the input
+        value=st.session_state.get("api_key", app_config.openai_api_key or ""), # Display current session key or configured key
+        help="Enter your OpenAI API key if not already configured. This will override any system-set key for your current session.",
+        disabled=bool(app_config.openai_api_key), # Disable input if key is pre-loaded from app_config (env/secrets)
+    )
+    # If user enters a new key and it's different from the current session key, update it.
+    if user_provided_api_key and user_provided_api_key != st.session_state.get("api_key"):
+        st.session_state["api_key"] = user_provided_api_key # Update the API key in session state
+        st.success("API key has been updated for the current session.")
 
-                if st.button("✅ Check", key=f"chk_{ch.id}", disabled=not ans.strip()):
-                    result = graph_app.invoke(
-                        {
-                            "jp_prompt": ch.jp_prompt,
-                            "en_answer": ch.en_answer,
-                            "user_input": ans,  # user's answer. this will be used to generate feedback
-                        },
-                        config={"run-name": f"chunk-{ch.id}"},
+# ──────────────────────────────────────────────────────────────────────────────
+# Main UI: Title, Practice Queue, and Tabs
+# ──────────────────────────────────────────────────────────────────────────────
+st.title("📚 Chunk Recall Trainer") # Main title of the application
+
+# Initialize or update the daily practice queue for the logged-in user.
+# The queue contains chunks that are "overdue" for review based on SM2 algorithm.
+# This logic runs only if a user is authenticated and the `repo` is available.
+if "user_id" in st.session_state and st.session_state.user_id and 'repo' in locals():
+    # Check if the queue needs refreshing (e.g., new day or first load).
+    if "queue_date" not in st.session_state or st.session_state.queue_date != date.today():
+        try:
+            # Fetch up to 5 overdue chunks to form the daily practice queue.
+            st.session_state.queue = repo.get_overdue(limit=5) 
+            st.session_state.queue_date = date.today() # Mark queue as updated for today
+            st.session_state.queue_total = len(st.session_state.queue) # Total items for today's session
+        except Exception as e:
+            st.error(f"Failed to load practice queue: {e}")
+            st.session_state.queue = [] # Default to empty queue on error
+            st.session_state.queue_total = 0
+else: 
+    # Fallback if user/repo not properly initialized (should be rare).
+    st.session_state.queue = []
+    st.session_state.queue_total = 0
+    
+# Display progress for the current practice session.
+practice_chunks_queue = st.session_state.get("queue", [])
+num_remaining_in_practice_queue = len(practice_chunks_queue)
+total_chunks_for_today_session = st.session_state.get("queue_total", 0)
+# Calculate how many chunks have been (or are being) processed from today's queue.
+# If queue is not empty, count includes the current one.
+current_progress_display_count = total_chunks_for_today_session - num_remaining_in_practice_queue + \
+                                 (1 if num_remaining_in_practice_queue > 0 and total_chunks_for_today_session > 0 else 0)
+
+
+# Layout for title (already set) and progress metric.
+main_title_column, progress_metric_column = st.columns([3, 1])
+with main_title_column:
+    pass # Main title `st.title("📚 Chunk Recall Trainer")` is already rendered above.
+with progress_metric_column:
+    if total_chunks_for_today_session > 0:
+        st.metric("Today's Review Progress", f"{current_progress_display_count}/{total_chunks_for_today_session}")
+    else:
+        # Show N/A if there are no chunks in the queue for today.
+        st.metric("Today's Review Progress", "N/A")
+
+
+# Tabbed interface for "Practice" and "Manage Chunks" sections.
+tab_practice_section, tab_manage_chunks_section = st.tabs(["💬 Practice Exercises", "📋 Manage Your Chunks"])
+
+# ──────────────────────────────────────────────────────────────────────────────
+# "Practice" Tab Logic: Handles exercise display, interaction, and feedback.
+# ──────────────────────────────────────────────────────────────────────────────
+with tab_practice_section:
+    # An OpenAI API key is essential for the Practice tab as it involves LLM calls
+    # via the LangGraph app for generating questions and providing feedback.
+    if not st.session_state.get("api_key"):
+        st.warning("⚠️ OpenAI API key is not set. Please configure it in the sidebar under Settings to use practice features.")
+        st.stop() # Stop rendering this tab if API key is missing.
+
+    # If the practice queue is empty for today, display a success message.
+    if not practice_chunks_queue: # Checks the daily limited queue
+        st.success("🎉 All chunks for today's session are reviewed! Check back tomorrow or add new chunks.")
+        st.stop() # Stop rendering further if nothing to practice.
+
+    # The UI iterates through ALL overdue chunks from `repo.get_overdue()`.
+    # This allows users to practice any overdue chunk, not just those in the limited daily queue.
+    # Session state (e.g., `q_{id}`, `ak_{id}`) is used to manage the state of each chunk's exercise individually.
+    # This means a user can generate a question for one chunk, answer another, etc.
+    
+    # Display each overdue chunk within an expander for individual practice.
+    for chunk_item_to_practice in repo.get_overdue(): # Iterates all overdue, not just the daily `practice_chunks_queue`
+        chunk_id_as_str = str(chunk_item_to_practice.id) # Use string ID for session state keys for robustness.
+        
+        # Expander title shows Japanese prompt and next due date for context.
+        with st.expander(f"🇯🇵 JP: {chunk_item_to_practice.jp_prompt} (Next due: {chunk_item_to_practice.next_due_date.strftime('%Y-%m-%d')})"):
+            st.markdown(f"🇬🇧 EN: {chunk_item_to_practice.en_answer}") # Display the English answer/chunk.
+
+            # "Generate Practice Question" button:
+            # Invokes the LangGraph app (`graph_app`) to generate a question and its model answer key.
+            if st.button("📝 Generate Practice Question", key=f"practice_btn_{chunk_id_as_str}"):
+                # Prepare input for the graph: only `jp_prompt` and `en_answer` are needed for question generation.
+                # Other fields are set to None as per the graph's expected input state.
+                graph_input_for_question = {
+                    "jp_prompt": chunk_item_to_practice.jp_prompt,
+                    "en_answer": chunk_item_to_practice.en_answer,
+                    "user_input": None, # No user input at this stage.
+                    "question": None,   # Question will be generated by the graph.
+                    "answer_key": None, # Answer key will be generated by the graph.
+                    "feedback": None,   # No feedback yet.
+                }
+                try:
+                    # Invoke the LangGraph app. `config` adds a run name for LangSmith tracing (if enabled).
+                    question_generation_result = graph_app.invoke(
+                        graph_input_for_question,
+                        config={"run-name": f"generate_exercise_chunk-{chunk_id_as_str}"},
                     )
-                    st.markdown(f"**Feedback**:\n\n{result.get('feedback')}")
+                    # Store the generated question and its answer key in session state, keyed by chunk ID.
+                    # This allows multiple exercises to be active simultaneously.
+                    st.session_state[f"q_{chunk_id_as_str}"] = question_generation_result.get("question")
+                    st.session_state[f"ak_{chunk_id_as_str}"] = question_generation_result.get("answer_key")
+                    # Clear any previous feedback or answer for this chunk when a new question is generated.
+                    st.session_state[f"fb_{chunk_id_as_str}"] = None 
+                    st.session_state[f"ans_val_{chunk_id_as_str}"] = "" 
+                except Exception as e:
+                    st.error(f"An error occurred while generating the question: {e}")
+            
+            # Display the generated question if it exists in the session state for this chunk.
+            current_practice_question = st.session_state.get(f"q_{chunk_id_as_str}")
+            if current_practice_question:
+                st.markdown(f"**🤔 Your Question:** {current_practice_question}")
 
-with tab_manage:
-    st.subheader("📋 Chunk List")
+                # Audio input section (experimental): Allows user to upload a spoken answer.
+                st.markdown("##### 🎙️ Optionally, answer by voice (Upload audio file)")
+                audio_file_upload = st.file_uploader(
+                    "Upload your spoken answer (WAV or MP3 format)", type=["wav", "mp3"], key=f"audio_uploader_{chunk_id_as_str}"
+                )
+                if audio_file_upload and st.session_state.get("api_key"): # Check for API key again before OpenAI call
+                    with st.spinner("Transcribing your audio answer... Please wait."):
+                        try:
+                            # Initialize OpenAI client specifically for this Whisper API call.
+                            # Consider creating a shared client if making frequent calls to optimize.
+                            openai_whisper_client = OpenAI(api_key=st.session_state["api_key"])
+                            transcription_response = openai_whisper_client.audio.transcriptions.create(
+                                model="whisper-1",      # Specify Whisper model
+                                file=audio_file_upload, # The uploaded file object
+                                response_format="text", # Request plain text output
+                            )
+                            if transcription_response:
+                                # Populate the text area below with the transcribed text.
+                                st.session_state[f"ans_val_{chunk_id_as_str}"] = str(transcription_response).strip()
+                                st.success("Audio transcribed successfully! Your answer has been populated below.")
+                        except Exception as e:
+                            st.error(f"Audio transcription failed: {e}")
 
-    df = pd.DataFrame([c.__dict__ for c in repo.get_all()])
+                # Text area for the user to type or see their transcribed answer.
+                # Its value is bound to `st.session_state[f"ans_val_{chunk_id_as_str}"]`
+                # to persist input across interactions or reflect transcribed audio.
+                user_typed_answer = st.text_area(
+                    "Your Answer:", 
+                    key=f"ans_text_area_{chunk_id_as_str}", # Unique key for the text area
+                    value=st.session_state.get(f"ans_val_{chunk_id_as_str}", "") # Default to empty or previous value
+                )
+                # Ensure session state is updated if user types directly into the text area.
+                st.session_state[f"ans_val_{chunk_id_as_str}"] = user_typed_answer
+
+                # "Check My Answer" button: Disabled if no answer is provided.
+                # This sends the user's answer to the LangGraph app for feedback.
+                if st.button("✅ Check My Answer", key=f"check_btn_{chunk_id_as_str}", disabled=not user_typed_answer.strip()):
+                    # Retrieve the question and its model answer key from session state to provide context for review.
+                    question_context_for_review = st.session_state.get(f"q_{chunk_id_as_str}")
+                    answer_key_context_for_review = st.session_state.get(f"ak_{chunk_id_as_str}")
+
+                    if not question_context_for_review or not answer_key_context_for_review:
+                        st.error("⚠️ Cannot check answer: The practice question or its model answer key was not found. Please generate a question first.")
+                    else:
+                        # Prepare input for the graph's review path.
+                        # This includes the original chunk, user's answer, the generated question, and its model answer.
+                        graph_input_for_feedback = {
+                            "jp_prompt": chunk_item_to_practice.jp_prompt,    # Original JP part of the chunk
+                            "en_answer": chunk_item_to_practice.en_answer,    # Original EN part of the chunk
+                            "user_input": user_typed_answer,                  # User's submitted answer
+                            "question": question_context_for_review,          # The question user was answering
+                            "answer_key": answer_key_context_for_review,      # The model answer to that question
+                            "feedback": None,                                 # Feedback will be generated by the graph.
+                        }
+                        try:
+                            feedback_result = graph_app.invoke(
+                                graph_input_for_feedback,
+                                config={"run-name": f"review_answer_chunk-{chunk_id_as_str}"}, # LangSmith run name
+                            )
+                            # Store the AI-generated feedback in session state.
+                            st.session_state[f"fb_{chunk_id_as_str}"] = feedback_result.get("feedback")
+                        except Exception as e:
+                            st.error(f"An error occurred while getting feedback: {e}")
+                
+                # Display the feedback if it's available in session state for this chunk.
+                current_feedback_markdown = st.session_state.get(f"fb_{chunk_id_as_str}")
+                if current_feedback_markdown:
+                    st.markdown(f"**💡 Feedback:**\n\n{current_feedback_markdown}")
+            st.markdown("---") # Visual separator between chunks in the practice list.
+
+# ──────────────────────────────────────────────────────────────────────────────
+# "Manage Chunks" Tab Logic: Viewing, editing, and managing the chunk collection.
+# ──────────────────────────────────────────────────────────────────────────────
+with tab_manage_chunks_section:
+    st.subheader("📋 Your Chunk Collection")
+    # Ensure user is logged in and repository is initialized before showing management tools.
+    if not ('repo' in locals() and st.session_state.get("user_id")):
+        st.warning("Please log in to manage your chunks.")
+        st.stop() # Stop rendering this tab if prerequisites are not met.
+
+    all_user_chunks_list = repo.get_all() # Fetch all chunks for the current user.
+    if not all_user_chunks_list:
+        st.info("You haven't added any chunks yet. Use the 'Add a New Chunk' form in the sidebar or import a CSV file!")
+    else:
+        # Convert list of Chunk Pydantic models to a Pandas DataFrame for display in st.data_editor.
+        # Using model_dump() for proper serialization if Chunks are Pydantic models.
+        # If Chunks are simple dicts or dataclasses, `c.__dict__` might be okay but model_dump is safer.
+        try:
+            chunks_df = pd.DataFrame([c.model_dump() for c in all_user_chunks_list])
+        except AttributeError: # Fallback if .model_dump() is not available (e.g. not Pydantic)
+            chunks_df = pd.DataFrame([c.__dict__ for c in all_user_chunks_list])
+            
     edited = st.data_editor(
         df[["id", "jp_prompt", "en_answer", "ef", "interval"]],
         num_rows="dynamic",
