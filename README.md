@@ -1,5 +1,8 @@
 # Chunk Recall Trainer
 
+[![Python Tests](https://github.com/YOUR_GITHUB_USERNAME/YOUR_REPOSITORY_NAME/actions/workflows/python-tests.yml/badge.svg)](https://github.com/YOUR_GITHUB_USERNAME/YOUR_REPOSITORY_NAME/actions/workflows/python-tests.yml)
+<!-- TODO: Replace YOUR_GITHUB_USERNAME/YOUR_REPOSITORY_NAME with the actual GitHub owner and repository name for the badge to work correctly. -->
+
 > **Status:** ✨ Prototype (Sprint 2: 2025-04-28 → 05-02)
 
 ## 🚀 Problem Statement

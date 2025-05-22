@@ -1,0 +1,55 @@
+name: Python Tests
+
+on:
+  push:
+    branches: [ main ] # Or your default branch
+  pull_request:
+    branches: [ main ] # Or your default branch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10"] # You can choose one or more Python versions
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v3
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        # If you have test-specific dependencies, you might install them here
+        # e.g., pip install pytest mock
+
+    - name: Test with unittest
+      run: |
+        python -m unittest discover -s tests -p "test_*.py"
+      env:
+        # If your tests require environment variables, even for mocked scenarios,
+        # define them here. For actual secrets, use GitHub repository secrets.
+        # Example:
+        # OPENAI_API_KEY: "test_key"
+        # FIREBASE_API_KEY: "test_key"
+        # FIREBASE_AUTH_DOMAIN: "test.firebaseapp.com"
+        # FIREBASE_MEASUREMENT_ID: "test_measurement_id"
+        # ALLOWED_EMAILS: "test@example.com"
+        # LANGSMITH_API_KEY: "test_ls_key"
+        #
+        # For the current tests, they primarily use mocks that are self-contained
+        # or mock os.environ. However, explicitly defining them here ensures
+        # the CI environment is predictable if any test inadvertently relies on them.
+        # For this project, since mocks are thorough, these might not be strictly
+        # necessary for tests to pass but are good practice if defaults are assumed.
+        OPENAI_API_KEY: "dummy_openai_key"
+        FIREBASE_API_KEY: "dummy_firebase_key"
+        FIREBASE_AUTH_DOMAIN: "dummy.firebase.auth.domain"
+        FIREBASE_MEASUREMENT_ID: "dummy_measurement_id"
+        ALLOWED_EMAILS: "user@example.com"
+        # Add any other env vars your AppConfig or tests might expect, even if mocked.
