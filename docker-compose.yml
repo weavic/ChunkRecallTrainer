@@ -4,7 +4,19 @@ services:
       context: .
       dockerfile: Dockerfile
     env_file: .env
+    working_dir: /app
     ports:
       - "8080:8501"
     volumes:
       - .:/app
+    environment:
+      - PYTHONPATH=/app
+      # Other environment variables from .env will also be loaded here.
+      # Example: OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Ensure critical runtime env vars needed by the app itself are also listed
+      # if they are not exclusively in the .env file or need to be explicitly passed.
+      # For PYTHONPATH, direct definition is usually best.
+      # If .env file already defines PYTHONPATH, this will override it.
+      # If .env defines other critical vars like OPENAI_API_KEY, they are loaded by env_file.
+      # Adding them explicitly under 'environment' can also work and sometimes offers more clarity or control.
+      # For this task, only PYTHONPATH is the explicit requirement.

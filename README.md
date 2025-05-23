@@ -1,5 +1,7 @@
 # Chunk Recall Trainer
 
+[![Python Tests](https://github.com/weavic/ChunkRecallTrainer/actions/workflows/python-tests.yml/badge.svg?branch=main)](https://github.com/weavic/ChunkRecallTrainer/actions/workflows/python-tests.yml)
+
 > **Status:** ✨ Prototype (Sprint 2: 2025-04-28 → 05-02)
 
 ## 🚀 Problem Statement

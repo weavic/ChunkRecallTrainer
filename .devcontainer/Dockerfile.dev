@@ -9,4 +9,5 @@ USER vscode
 WORKDIR /workspace
 
 ENV PATH="/home/vscode/.cargo/bin:$PATH"
+ENV PATH="/workspaces/ChunkRecallTrainer/.venv/bin:$PATH"
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
