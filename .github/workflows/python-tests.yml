@@ -2,22 +2,22 @@ name: Python Tests
 
 on:
   push:
-    branches: [ main ] # Or your default branch
+    branches: [ main ]
   pull_request:
-    branches: [ main ] # Or your default branch
+    branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11"] # Changed back to use Python 3.11
+        python-version: ["3.11"]
 
     steps:
-    - uses: actions/checkout@v4 # Updated to v4
+    - uses: actions/checkout@v4
 
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4 # Updated to v4
+      uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
 
