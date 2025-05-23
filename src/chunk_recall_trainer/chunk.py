@@ -22,14 +22,15 @@ Database Interaction:
   (obtained from `st.session_state["user_id"]` after authentication) to the
   `ChunkRepo`.
 """
-from __future__ import annotations # For type hinting Chunk within Chunk class methods
+
+from __future__ import annotations  # For type hinting Chunk within Chunk class methods
 
 from dataclasses import dataclass, asdict, field
 from datetime import date, datetime, timedelta, timezone
 import sqlite3
-from typing import List, Optional, Union, Any # Any for pd.DataFrame.iterrows()
+from typing import List, Optional, Union, Any  # Any for pd.DataFrame.iterrows()
 import pandas as pd
-import re # For CSV header cleaning
+import re  # For CSV header cleaning
 
 # Default path for the SQLite database file.
 DB_PATH = "chunks.db"
@@ -37,6 +38,7 @@ DB_PATH = "chunks.db"
 ###############################################################################
 # Data Model: Chunk
 ###############################################################################
+
 
 @dataclass
 class Chunk:
@@ -68,14 +70,15 @@ class Chunk:
         updated_at (datetime): Timestamp (UTC) when the chunk was last updated.
                                Defaults to the current UTC time.
     """
+
     id: Optional[int]
     user_id: str
     jp_prompt: str
     en_answer: str
     ef: float = 2.5  # Easiness Factor (SM-2 default)
     interval: int = 0  # Days until next review (0 for new/failed chunks)
-    next_due_date: date = field(default_factory=date.today) # Defaults to today
-    review_count: int = 0 # Number of times reviewed
+    next_due_date: date = field(default_factory=date.today)  # Defaults to today
+    review_count: int = 0  # Number of times reviewed
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -84,7 +87,7 @@ class Chunk:
     def create_table(conn: sqlite3.Connection) -> None:
         """
         Creates the `chunks` table in the SQLite database if it doesn't already exist.
-        
+
         This method defines the schema for storing chunks, including SM-2 parameters
         and user scoping.
 
@@ -109,12 +112,12 @@ class Chunk:
             );
             """
         )
-        conn.commit() # Commits the transaction to ensure table is created.
+        conn.commit()  # Commits the transaction to ensure table is created.
 
     def save(self, conn: sqlite3.Connection) -> "Chunk":
         """
         Saves the current chunk instance to the database.
-        
+
         If the chunk's `id` is None, it's treated as a new chunk and an INSERT
         operation is performed. Otherwise, an existing chunk is updated using an
         UPDATE operation (scoped to the chunk's `id` and `user_id`).
@@ -130,13 +133,15 @@ class Chunk:
         """
         # Prepare payload, converting datetime/date objects to ISO strings for SQLite.
         payload = {
-            **asdict(self), # Converts dataclass to dict, but datetime/date are still objects
+            **asdict(
+                self
+            ),  # Converts dataclass to dict, but datetime/date are still objects
             "next_due_date": self.next_due_date.isoformat(),
             "created_at": self.created_at.isoformat(),
-            "updated_at": self.updated_at.isoformat(), # Initially set, updated below if existing
+            "updated_at": self.updated_at.isoformat(),  # Initially set, updated below if existing
         }
 
-        if self.id is None: # New chunk: Perform INSERT
+        if self.id is None:  # New chunk: Perform INSERT
             cursor = conn.execute(
                 """
                 INSERT INTO chunks (user_id, jp_prompt, en_answer, ef, interval, next_due_date,
@@ -146,12 +151,16 @@ class Chunk:
                 """,
                 payload,
             )
-            self.id = cursor.lastrowid # Set the new chunk's ID from the database.
-        else: # Existing chunk: Perform UPDATE
-            self.updated_at = datetime.now(timezone.utc) # Update `updated_at` timestamp.
-            payload["updated_at"] = self.updated_at.isoformat() # Update payload for DB
-            payload["id"] = self.id # Ensure ID is in payload for WHERE clause, though not strictly needed for SET
-            
+            self.id = cursor.lastrowid  # Set the new chunk's ID from the database.
+        else:  # Existing chunk: Perform UPDATE
+            self.updated_at = datetime.now(
+                timezone.utc
+            )  # Update `updated_at` timestamp.
+            payload["updated_at"] = self.updated_at.isoformat()  # Update payload for DB
+            payload["id"] = (
+                self.id
+            )  # Ensure ID is in payload for WHERE clause, though not strictly needed for SET
+
             conn.execute(
                 """
                 UPDATE chunks SET
@@ -166,14 +175,14 @@ class Chunk:
                 """,
                 payload,
             )
-        conn.commit() # Commits the transaction.
+        conn.commit()  # Commits the transaction.
         return self
 
     @staticmethod
     def from_row(row: sqlite3.Row) -> "Chunk":
         """
         Converts a SQLite row object into a Chunk dataclass instance.
-        
+
         Handles parsing of date and datetime strings from the database into
         Python `date` and `datetime` objects.
 
@@ -183,17 +192,20 @@ class Chunk:
         Returns:
             A Chunk instance populated with data from the row.
         """
+
         # Helper to parse date strings or pass through existing date/datetime objects.
         def _parse_date_field(value: Union[str, date, datetime]) -> date:
-            if isinstance(value, date) and not isinstance(value, datetime): # Already a date object
+            if isinstance(value, date) and not isinstance(
+                value, datetime
+            ):  # Already a date object
                 return value
-            if isinstance(value, datetime): # If datetime, convert to date
+            if isinstance(value, datetime):  # If datetime, convert to date
                 return value.date()
-            return datetime.fromisoformat(value).date() # Parse from ISO string
+            return datetime.fromisoformat(value).date()  # Parse from ISO string
 
         # Helper to parse datetime strings or pass through existing datetime objects.
         def _parse_datetime_field(value: Union[str, datetime]) -> datetime:
-            if isinstance(value, datetime): # Already a datetime object
+            if isinstance(value, datetime):  # Already a datetime object
                 return value
             dt_obj = datetime.fromisoformat(value)
             # Ensure datetime is timezone-aware (assuming UTC if naive, which fromisoformat might produce for non-Z strings)
@@ -214,9 +226,11 @@ class Chunk:
             updated_at=_parse_datetime_field(row["updated_at"]),
         )
 
+
 ###############################################################################
 # Repository Layer: ChunkRepo
 ###############################################################################
+
 
 class ChunkRepo:
     """
@@ -250,7 +264,7 @@ class ChunkRepo:
         self.conn = sqlite3.connect(
             db_path,
             detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
-            check_same_thread=False, # Important for Streamlit's execution model
+            check_same_thread=False,  # Important for Streamlit's execution model
         )
         # Set row_factory to sqlite3.Row to access columns by name.
         self.conn.row_factory = sqlite3.Row
@@ -265,7 +279,8 @@ class ChunkRepo:
             A list of Chunk objects. Returns an empty list if no chunks are found.
         """
         cursor = self.conn.execute(
-            "SELECT * FROM chunks WHERE user_id = ? ORDER BY created_at DESC", (self.user_id,)
+            "SELECT * FROM chunks WHERE user_id = ? ORDER BY created_at DESC",
+            (self.user_id,),
         )
         rows = cursor.fetchall()
         return [Chunk.from_row(row) for row in rows]
@@ -273,7 +288,7 @@ class ChunkRepo:
     def get_overdue(self, limit: int = 5) -> List[Chunk]:
         """
         Retrieves chunks that are due for review (next_due_date is today or earlier).
-        
+
         Results are ordered by `next_due_date` (oldest first) and then by `review_count`
         (least reviewed first) to prioritize items that are most overdue or less practiced.
 
@@ -298,7 +313,7 @@ class ChunkRepo:
     def add(self, chunk: Chunk) -> Chunk:
         """
         Adds a new chunk to the database for the current user.
-        
+
         The `user_id` of the provided chunk object is automatically set to the
         repository's `user_id` to ensure correct scoping.
 
@@ -309,13 +324,15 @@ class ChunkRepo:
             The added Chunk object, now with its `id` (and potentially other fields
             like `created_at`, `updated_at`) populated from the database.
         """
-        chunk.user_id = self.user_id # Ensure the chunk is associated with this repo's user.
-        return chunk.save(self.conn) # Delegates to Chunk's save method.
+        chunk.user_id = (
+            self.user_id
+        )  # Ensure the chunk is associated with this repo's user.
+        return chunk.save(self.conn)  # Delegates to Chunk's save method.
 
     def update(self, chunk: Chunk) -> Chunk:
         """
         Updates an existing chunk in the database.
-        
+
         Performs a check to ensure the chunk being updated belongs to the
         current user associated with the repository.
 
@@ -329,13 +346,15 @@ class ChunkRepo:
             ValueError: If the chunk's `user_id` does not match the repository's `user_id`.
         """
         if chunk.user_id != self.user_id:
-            raise ValueError("SecurityError: Attempt to update a chunk belonging to another user.")
-        return chunk.save(self.conn) # Delegates to Chunk's save method.
+            raise ValueError(
+                "SecurityError: Attempt to update a chunk belonging to another user."
+            )
+        return chunk.save(self.conn)  # Delegates to Chunk's save method.
 
     def bulk_update(self, df: pd.DataFrame) -> None:
         """
         Updates multiple chunks based on data from a Pandas DataFrame.
-        
+
         Each row in the DataFrame is expected to correspond to a chunk, containing
         at least 'id', 'jp_prompt', 'en_answer', 'ef', and 'interval'.
         Missing SM-2 parameters might default if not handled carefully.
@@ -352,41 +371,43 @@ class ChunkRepo:
             # Ensure all necessary fields for Chunk are present in row_data or handled with defaults.
             chunk_to_update = Chunk(
                 id=row_data["id"],
-                user_id=self.user_id, # Ensure user_id is correctly scoped
+                user_id=self.user_id,  # Ensure user_id is correctly scoped
                 jp_prompt=row_data["jp_prompt"],
                 en_answer=row_data["en_answer"],
                 ef=row_data["ef"],
                 interval=row_data["interval"],
                 # next_due_date might need to be parsed if it's a string in the DataFrame
-                next_due_date=pd.to_datetime(row_data.get("next_due_date", date.today())).date(),
+                next_due_date=pd.to_datetime(
+                    row_data.get("next_due_date", date.today())
+                ).date(),
                 review_count=int(row_data.get("review_count", 0)),
                 # created_at is usually not updated, updated_at is handled by .save()
             )
-            self.update(chunk_to_update) # Use the existing update method.
+            self.update(chunk_to_update)  # Use the existing update method.
 
     def delete_many(self, ids: List[int]) -> None:
         """
         Deletes multiple chunks from the database by their IDs.
-        
+
         The deletion is scoped to the current user.
 
         Args:
             ids: A list of integer IDs of the chunks to be deleted.
         """
-        if not ids: # Do nothing if the list of IDs is empty.
+        if not ids:  # Do nothing if the list of IDs is empty.
             return
         # Create a string of placeholders for the SQL IN clause (e.g., "?,?,?")
         placeholders = ",".join(["?"] * len(ids))
         self.conn.execute(
             f"DELETE FROM chunks WHERE user_id = ? AND id IN ({placeholders})",
-            (self.user_id, *ids), # Unpack IDs into query parameters
+            (self.user_id, *ids),  # Unpack IDs into query parameters
         )
         self.conn.commit()
 
     def reset_intervals(self, ids: List[int]) -> None:
         """
         Resets the review intervals and related SM-2 parameters for specified chunks.
-        
+
         Sets `interval` to 0, `next_due_date` to today, and `review_count` to 0,
         effectively making these chunks due for immediate review as if they were new.
         Scoped to the current user.
@@ -394,10 +415,12 @@ class ChunkRepo:
         Args:
             ids: A list of integer IDs of the chunks whose intervals are to be reset.
         """
-        if not ids: # Do nothing if the list of IDs is empty.
+        if not ids:  # Do nothing if the list of IDs is empty.
             return
         placeholders = ",".join(["?"] * len(ids))
-        today_iso = date.today().isoformat() # Get today's date in ISO format for query.
+        today_iso = (
+            date.today().isoformat()
+        )  # Get today's date in ISO format for query.
         self.conn.execute(
             f"""
             UPDATE chunks
@@ -406,14 +429,14 @@ class ChunkRepo:
                 review_count = 0         /* Reset review count */
             WHERE user_id = ? AND id IN ({placeholders}) /* Scope to user and selected IDs */
             """,
-            (today_iso, self.user_id, *ids), # Parameters for the query
+            (today_iso, self.user_id, *ids),  # Parameters for the query
         )
         self.conn.commit()
 
     def save_from_csv(self, file_obj: Any) -> int:
         """
         Imports chunks from a CSV file-like object into the database for the current user.
-        
+
         The CSV file is expected to have columns for Japanese and English phrases.
         Column names are normalized (lowercase, spaces removed).
         SM-2 parameters (`ef`, `interval`, `next_due_date`, `review_count`) can be
@@ -429,37 +452,43 @@ class ChunkRepo:
 
         # Normalize column names: lowercase and remove spaces.
         df.columns = [re.sub(r"\s+", "", str(c).lower()) for c in df.columns]
-        
+
         # Dynamically find Japanese and English column names (assuming they start with 'jp' or 'en').
         # This adds flexibility if exact column names vary slightly.
         try:
             col_jp = next(c for c in df.columns if c.startswith("jp"))
             col_en = next(c for c in df.columns if c.startswith("en"))
         except StopIteration:
-            raise ValueError("CSV must contain columns starting with 'jp' (for Japanese) and 'en' (for English).")
+            raise ValueError(
+                "CSV must contain columns starting with 'jp' (for Japanese) and 'en' (for English)."
+            )
 
         chunks_added_count = 0
         for _, row in df.iterrows():
             # Parse next_due_date if present, otherwise default to today.
-            next_due_val = row.get("next_due_date")
+            next_due_val = row.get("nextduedate")  # meet standarizedized column name
             parsed_next_due_date = (
                 date.fromisoformat(str(next_due_val))
                 if next_due_val and not pd.isna(next_due_val)
                 else date.today()
             )
-            
+
             # Create and add a new Chunk object for each row in the CSV.
             # `id` is None, so it will be an insert operation.
             self.add(
                 Chunk(
-                    id=None, # New chunk
-                    user_id=self.user_id, # Associate with current user
+                    id=None,  # New chunk
+                    user_id=self.user_id,  # Associate with current user
                     jp_prompt=str(row[col_jp]),
                     en_answer=str(row[col_en]),
-                    ef=float(row.get("ef", 2.5)), # Default EF if not in CSV
-                    interval=int(row.get("interval", 0)), # Default interval if not in CSV
+                    ef=float(row.get("ef", 2.5)),  # Default EF if not in CSV
+                    interval=int(
+                        row.get("interval", 0)
+                    ),  # Default interval if not in CSV
                     next_due_date=parsed_next_due_date,
-                    review_count=int(row.get("review_count", 0)), # Default review_count
+                    review_count=int(
+                        row.get("review_count", 0)
+                    ),  # Default review_count
                 )
             )
             chunks_added_count += 1
@@ -473,12 +502,13 @@ class ChunkRepo:
             A string containing the CSV data.
         """
         cursor = self.conn.execute(
-            "SELECT * FROM chunks WHERE user_id = ? ORDER BY created_at ASC", (self.user_id,)
+            "SELECT * FROM chunks WHERE user_id = ? ORDER BY created_at ASC",
+            (self.user_id,),
         )
         rows = cursor.fetchall()
         # Convert list of sqlite3.Row objects to list of dicts for DataFrame creation.
         df = pd.DataFrame([dict(row) for row in rows])
-        return df.to_csv(index=False) # Convert DataFrame to CSV string without index.
+        return df.to_csv(index=False)  # Convert DataFrame to CSV string without index.
 
     def reset(self) -> None:
         """
@@ -488,9 +518,11 @@ class ChunkRepo:
         self.conn.execute("DELETE FROM chunks WHERE user_id = ?", (self.user_id,))
         self.conn.commit()
 
+
 ###############################################################################
 # SM-2 Spaced Repetition Algorithm Logic
 ###############################################################################
+
 
 def sm2_update(chunk: Chunk, quality: int) -> Chunk:
     """
@@ -530,14 +562,14 @@ def sm2_update(chunk: Chunk, quality: int) -> Chunk:
     # else: EF remains unchanged for quality < 3
 
     # Update interval based on quality and review count.
-    if quality < 3: # If recall quality is low (incorrect or very difficult)
-        chunk.interval = 1 # Reset interval to 1 day (or 0 for immediate re-review, SM-2 usually suggests 1st interval)
-    else: # If recall quality is good (quality >= 3)
-        if chunk.review_count == 0: # First successful review
+    if quality < 3:  # If recall quality is low (incorrect or very difficult)
+        chunk.interval = 1  # Reset interval to 1 day (or 0 for immediate re-review, SM-2 usually suggests 1st interval)
+    else:  # If recall quality is good (quality >= 3)
+        if chunk.review_count == 0:  # First successful review
             chunk.interval = 1
-        elif chunk.review_count == 1: # Second successful review
+        elif chunk.review_count == 1:  # Second successful review
             chunk.interval = 6
-        else: # Subsequent successful reviews
+        else:  # Subsequent successful reviews
             # Interval grows by the Easiness Factor.
             # Rounding is applied as interval is in days.
             chunk.interval = int(round(chunk.interval * chunk.ef))
@@ -545,10 +577,12 @@ def sm2_update(chunk: Chunk, quality: int) -> Chunk:
 
     # Increment review count after each review.
     chunk.review_count += 1
-    
+
     # Set the next due date based on the new interval.
-    chunk.next_due_date = date.today() + timedelta(days=max(1, chunk.interval)) # Ensure interval is at least 1 day for next review.
-    
+    chunk.next_due_date = date.today() + timedelta(
+        days=max(1, chunk.interval)
+    )  # Ensure interval is at least 1 day for next review.
+
     # Note: If quality < 3, some SM-2 variations might reset review_count or handle EF differently.
     # This implementation keeps EF unchanged for q < 3 and resets interval.
     # The original SM-2 algorithm resets the repetition sequence for q < 3,
@@ -560,6 +594,6 @@ def sm2_update(chunk: Chunk, quality: int) -> Chunk:
     # the interval calculation might use a higher review_count.
     # Let's adjust: if quality < 3, also reset review_count for stricter adherence.
     if quality < 3:
-        chunk.review_count = 0 # Reset review count as if starting over for this item.
+        chunk.review_count = 0  # Reset review count as if starting over for this item.
 
     return chunk
