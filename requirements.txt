@@ -8,4 +8,3 @@ langsmith
 langgraph
 streamlit-firebase-auth
 firebase_admin
-pytest

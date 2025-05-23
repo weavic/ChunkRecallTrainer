@@ -11,4 +11,4 @@ def patch_chat_openai(monkeypatch):
                 return {"question": "Use 'How are you?'", "answer": "How are you?"}
             return {"score": 4, "better": None, "comment": "Perfect!"}
 
-    monkeypatch.setattr("chunk_recall_trainer.graph.ChatOpenAI", DummyLLM)
+    monkeypatch.setattr("exercises.ChatOpenAI", DummyLLM)
