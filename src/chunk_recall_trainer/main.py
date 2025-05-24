@@ -35,11 +35,13 @@ from graph import app as graph_app # LangGraph application for exercise/feedback
 # FirebaseAuth is handled within the auth module.
 from .config import app_config # Centralized application configuration.
 from .auth import initialize_auth, authenticate_user, render_logout_button # Auth functions.
+from .logger import logger # Import the logger
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Application Setup: Page Configuration and Global Settings
 # ──────────────────────────────────────────────────────────────────────────────
 # Configure the Streamlit page. This must be the first Streamlit command executed.
+logger.info("Chunk Recall Trainer application started.")
 st.set_page_config(page_title="Chunk Recall Trainer", page_icon="📚", layout="centered")
 
 # Initialize OpenAI API key in session state from AppConfig if not already set by the user.
@@ -48,6 +50,7 @@ st.set_page_config(page_title="Chunk Recall Trainer", page_icon="📚", layout="
 # 2. Direct OpenAI calls, such as using the Whisper API for audio transcription.
 if app_config.openai_api_key and "api_key" not in st.session_state:
     st.session_state["api_key"] = app_config.openai_api_key
+    logger.info("OpenAI API key found in session state/config.")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Custom CSS Styling
@@ -82,10 +85,12 @@ current_user = authenticate_user(auth_handler, app_config)
 # Store the unique user ID in session state for use throughout the app.
 if current_user:
     st.session_state["user_id"] = current_user["uid"]
+    logger.info(f"User {st.session_state.user_id} authenticated successfully.")
 else:
     # This is a fallback; `authenticate_user` should have already stopped execution.
     # If `current_user` is None, it means auth failed or user is not yet logged in.
     if "user_id" not in st.session_state or not st.session_state.get("user_id"):
+         logger.warning("User failed authentication or is not logged in.")
          st.sidebar.error("Critical: Authentication process did not complete. Please try again.")
          st.stop() # Ensure app stops if control reaches here without a user_id.
 
@@ -96,11 +101,14 @@ if "user_id" in st.session_state and st.session_state.user_id:
     try:
         # Create a repository instance scoped to the current user.
         repo = ChunkRepo(user_id=st.session_state.user_id)
+        logger.info(f"ChunkRepo initialized for user {st.session_state.user_id}")
     except Exception as e: # Catch potential errors during database initialization.
+        logger.error(f"Fatal Error: Could not initialize user data repository for user {st.session_state.user_id}. Details: {e}")
         st.error(f"Fatal Error: Could not initialize user data repository. Details: {e}")
         st.stop() # Stop the app if the repo cannot be initialized.
 else:
     # This should be an unreachable state if authentication flow is correct.
+    logger.error("Fatal Error: User ID is missing after authentication. Cannot initialize data.")
     st.error("Fatal Error: User ID is missing after authentication. Cannot initialize data.")
     st.stop()
 
@@ -134,6 +142,7 @@ with st.sidebar:
         # CSV Import section
         uploaded_csv_file = st.file_uploader("Import Chunks from CSV", type="csv", key="csv_uploader")
         if uploaded_csv_file is not None:
+            logger.info(f"Attempting to import CSV file: {uploaded_csv_file.name}")
             try:
                 df_import = pd.read_csv(uploaded_csv_file)
                 # Convert DataFrame to a CSV string in memory for the repo method
@@ -142,13 +151,16 @@ with st.sidebar:
                 csv_in_memory.seek(0) # Rewind buffer to the beginning for reading
                 
                 imported_count = repo.save_from_csv(csv_in_memory)
+                logger.info(f"Successfully imported {imported_count} chunks from CSV.")
                 st.sidebar.success(f"✅ Successfully imported {imported_count} chunks!")
                 # Consider st.rerun() or other UI update mechanism if changes need immediate reflection
             except Exception as e:
+                logger.error(f"CSV import failed: {e}")
                 st.sidebar.error(f"CSV import failed: {e}")
         st.markdown("---") # Visual separator
         
         # CSV Export section
+        logger.info("Exporting all chunks to CSV.")
         all_chunks_as_csv_str = repo.export_all()
         st.download_button(
             label="💾 Export All Chunks to CSV",
@@ -168,6 +180,7 @@ with st.sidebar:
             
             if add_chunk_submit_button:
                 if new_jp_prompt_input and new_en_answer_input: # Basic validation
+                    logger.info(f"Adding new chunk: JP='{new_jp_prompt_input}', EN='{new_en_answer_input}'")
                     try:
                         # The Chunk class might handle ID generation if `id=None` is passed.
                         # user_id must be from the active session.
@@ -180,9 +193,11 @@ with st.sidebar:
                                 # EF, interval, etc., will be set to defaults by Pydantic model or DB
                             )
                         )
+                        logger.info("Chunk added successfully.")
                         st.session_state.just_added = True # Trigger toast notification
                         st.rerun() # Refresh UI to reflect the new chunk and update stats/queue
                     except Exception as e:
+                        logger.error(f"Failed to add chunk: {e}")
                         st.sidebar.error(f"Failed to add chunk: {e}")
                 else:
                     st.sidebar.warning("Both Japanese and English fields are required to add a new chunk.")
@@ -199,8 +214,10 @@ with st.sidebar:
             )
             
             if reset_db_submit_button and confirm_reset_checkbox:
+                logger.info("User initiated database reset.")
                 try:
                     repo.reset() # Method to delete all chunks for the current user
+                    logger.info("Database reset successful.")
                     st.session_state.just_reset = True # Trigger toast notification
                     # Clear any session state variables that might hold outdated data
                     st.session_state.queue = []
@@ -209,6 +226,7 @@ with st.sidebar:
                     # Potentially clear other session states like q_*, ak_*, fb_*, ans_val_* if they exist
                     st.rerun() # Refresh UI
                 except Exception as e:
+                    logger.error(f"Database reset operation failed: {e}")
                     st.sidebar.error(f"Database reset operation failed: {e}")
 
     # Settings section for API Key configuration.
@@ -219,7 +237,7 @@ with st.sidebar:
     # `app_config.openai_api_key` provides the value from env/secrets (if any).
     # `st.session_state.api_key` stores the key active for the current session, which could be
     # the one from `app_config` or one entered by the user.
-    user_provided_api_key = st.text_input( 
+    user_provided_api_key = st.text_input(
         "OpenAI API Key",
         type="password", # Masks the input
         value=st.session_state.get("api_key", app_config.openai_api_key or ""), # Display current session key or configured key
@@ -229,7 +247,11 @@ with st.sidebar:
     # If user enters a new key and it's different from the current session key, update it.
     if user_provided_api_key and user_provided_api_key != st.session_state.get("api_key"):
         st.session_state["api_key"] = user_provided_api_key # Update the API key in session state
+        logger.info("OpenAI API key updated by user for the current session.")
         st.success("API key has been updated for the current session.")
+    elif not st.session_state.get("api_key"):
+        logger.warning("OpenAI API key is not set.")
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Main UI: Title, Practice Queue, and Tabs
@@ -244,15 +266,18 @@ if "user_id" in st.session_state and st.session_state.user_id and 'repo' in loca
     if "queue_date" not in st.session_state or st.session_state.queue_date != date.today():
         try:
             # Fetch up to 5 overdue chunks to form the daily practice queue.
-            st.session_state.queue = repo.get_overdue(limit=5) 
+            st.session_state.queue = repo.get_overdue(limit=5)
             st.session_state.queue_date = date.today() # Mark queue as updated for today
             st.session_state.queue_total = len(st.session_state.queue) # Total items for today's session
+            logger.info(f"Practice queue updated for user {st.session_state.user_id}. Found {len(st.session_state.queue)} items.")
         except Exception as e:
+            logger.error(f"Failed to load practice queue: {e}")
             st.error(f"Failed to load practice queue: {e}")
             st.session_state.queue = [] # Default to empty queue on error
             st.session_state.queue_total = 0
-else: 
+else:
     # Fallback if user/repo not properly initialized (should be rare).
+    logger.warning("User or repo not initialized, practice queue cannot be loaded.")
     st.session_state.queue = []
     st.session_state.queue_total = 0
     
@@ -288,6 +313,7 @@ with tab_practice_section:
     # An OpenAI API key is essential for the Practice tab as it involves LLM calls
     # via the LangGraph app for generating questions and providing feedback.
     if not st.session_state.get("api_key"):
+        logger.warning("OpenAI API key is not set. Practice features will be limited.")
         st.warning("⚠️ OpenAI API key is not set. Please configure it in the sidebar under Settings to use practice features.")
         st.stop() # Stop rendering this tab if API key is missing.
 
@@ -312,6 +338,7 @@ with tab_practice_section:
             # "Generate Practice Question" button:
             # Invokes the LangGraph app (`graph_app`) to generate a question and its model answer key.
             if st.button("📝 Generate Practice Question", key=f"practice_btn_{chunk_id_as_str}"):
+                logger.info(f"Generating practice question for chunk ID: {chunk_id_as_str}")
                 # Prepare input for the graph: only `jp_prompt` and `en_answer` are needed for question generation.
                 # Other fields are set to None as per the graph's expected input state.
                 graph_input_for_question = {
@@ -333,9 +360,10 @@ with tab_practice_section:
                     st.session_state[f"q_{chunk_id_as_str}"] = question_generation_result.get("question")
                     st.session_state[f"ak_{chunk_id_as_str}"] = question_generation_result.get("answer_key")
                     # Clear any previous feedback or answer for this chunk when a new question is generated.
-                    st.session_state[f"fb_{chunk_id_as_str}"] = None 
-                    st.session_state[f"ans_val_{chunk_id_as_str}"] = "" 
+                    st.session_state[f"fb_{chunk_id_as_str}"] = None
+                    st.session_state[f"ans_val_{chunk_id_as_str}"] = ""
                 except Exception as e:
+                    logger.error(f"Error generating question for chunk ID {chunk_id_as_str}: {e}")
                     st.error(f"An error occurred while generating the question: {e}")
             
             # Display the generated question if it exists in the session state for this chunk.
@@ -349,6 +377,7 @@ with tab_practice_section:
                     "Upload your spoken answer (WAV or MP3 format)", type=["wav", "mp3"], key=f"audio_uploader_{chunk_id_as_str}"
                 )
                 if audio_file_upload and st.session_state.get("api_key"): # Check for API key again before OpenAI call
+                    logger.info(f"Transcribing audio for chunk ID: {chunk_id_as_str}")
                     with st.spinner("Transcribing your audio answer... Please wait."):
                         try:
                             # Initialize OpenAI client specifically for this Whisper API call.
@@ -362,8 +391,10 @@ with tab_practice_section:
                             if transcription_response:
                                 # Populate the text area below with the transcribed text.
                                 st.session_state[f"ans_val_{chunk_id_as_str}"] = str(transcription_response).strip()
+                                logger.info(f"Audio transcribed successfully for chunk ID: {chunk_id_as_str}")
                                 st.success("Audio transcribed successfully! Your answer has been populated below.")
                         except Exception as e:
+                            logger.error(f"Audio transcription failed for chunk ID {chunk_id_as_str}: {e}")
                             st.error(f"Audio transcription failed: {e}")
 
                 # Text area for the user to type or see their transcribed answer.
@@ -380,6 +411,7 @@ with tab_practice_section:
                 # "Check My Answer" button: Disabled if no answer is provided.
                 # This sends the user's answer to the LangGraph app for feedback.
                 if st.button("✅ Check My Answer", key=f"check_btn_{chunk_id_as_str}", disabled=not user_typed_answer.strip()):
+                    logger.info(f"Checking answer for chunk ID: {chunk_id_as_str}")
                     # Retrieve the question and its model answer key from session state to provide context for review.
                     question_context_for_review = st.session_state.get(f"q_{chunk_id_as_str}")
                     answer_key_context_for_review = st.session_state.get(f"ak_{chunk_id_as_str}")
@@ -405,6 +437,7 @@ with tab_practice_section:
                             # Store the AI-generated feedback in session state.
                             st.session_state[f"fb_{chunk_id_as_str}"] = feedback_result.get("feedback")
                         except Exception as e:
+                            logger.error(f"Error getting feedback for chunk ID {chunk_id_as_str}: {e}")
                             st.error(f"An error occurred while getting feedback: {e}")
                 
                 # Display the feedback if it's available in session state for this chunk.
@@ -433,10 +466,11 @@ with tab_manage_chunks_section:
         try:
             chunks_df = pd.DataFrame([c.model_dump() for c in all_user_chunks_list])
         except AttributeError: # Fallback if .model_dump() is not available (e.g. not Pydantic)
+            logger.warning("Using __dict__ for DataFrame conversion as model_dump is not available.")
             chunks_df = pd.DataFrame([c.__dict__ for c in all_user_chunks_list])
             
     edited = st.data_editor(
-        df[["id", "jp_prompt", "en_answer", "ef", "interval"]],
+        chunks_df[["id", "jp_prompt", "en_answer", "ef", "interval"]],
         num_rows="dynamic",
         use_container_width=True,
         column_config={
@@ -453,8 +487,14 @@ with tab_manage_chunks_section:
     left, mid, right = st.columns([1, 2, 1])
     with right:
         if st.button("💾 Save edits", use_container_width=True):
-            repo.bulk_update(edited)
-            st.success("Saved!")
+            try:
+                repo.bulk_update(edited)
+                logger.info(f"Bulk update successful for user {st.session_state.user_id}.")
+                st.success("Saved!")
+            except Exception as e:
+                logger.error(f"Bulk update failed for user {st.session_state.user_id}: {e}")
+                st.error(f"Failed to save edits: {e}")
+
 
     with st.container(border=True):
         col_sel, col_del, col_reset = st.columns([2, 1, 1])
@@ -470,23 +510,35 @@ with tab_manage_chunks_section:
         with col_del:
             st.markdown("**Danger**", help="Delete Selected Chunk")
             if st.button("🗑 Delete", disabled=sel_id is None, use_container_width=True):
-                repo.delete_many([sel_id])
-                st.rerun()
+                try:
+                    repo.delete_many([sel_id])
+                    logger.info(f"Deleted chunk with ID {sel_id} for user {st.session_state.user_id}.")
+                    st.rerun()
+                except Exception as e:
+                    logger.error(f"Failed to delete chunk with ID {sel_id} for user {st.session_state.user_id}: {e}")
+                    st.error(f"Failed to delete chunk: {e}")
+
 
         with col_reset:
             st.markdown("**Reset review**", help="Reset review interval/EF")
             if st.button(
                 "🔄 Reset intv", disabled=sel_id is None, use_container_width=True
             ):
-                repo.reset_intervals([sel_id])
-                st.rerun()
+                try:
+                    repo.reset_intervals([sel_id])
+                    logger.info(f"Reset interval for chunk ID {sel_id} for user {st.session_state.user_id}.")
+                    st.rerun()
+                except Exception as e:
+                    logger.error(f"Failed to reset interval for chunk ID {sel_id} for user {st.session_state.user_id}: {e}")
+                    st.error(f"Failed to reset interval: {e}")
 
-    df["next_due_date"] = pd.to_datetime(df["next_due_date"]).dt.date
-    due_today = (df["next_due_date"] <= date.today()).sum()
+
+    chunks_df["next_due_date"] = pd.to_datetime(chunks_df["next_due_date"]).dt.date
+    due_today = (chunks_df["next_due_date"] <= date.today()).sum()
 
     st.divider()
     st.subheader("📊 Stats")
     col1, col2, col3 = st.columns(3)
-    col1.metric("Total", len(df))
-    col2.metric("Avg EF", round(df["ef"].mean(), 2))
+    col1.metric("Total", len(chunks_df))
+    col2.metric("Avg EF", round(chunks_df["ef"].mean(), 2) if not chunks_df.empty else 0)
     col3.metric("Due today", due_today)
