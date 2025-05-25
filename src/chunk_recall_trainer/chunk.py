@@ -31,6 +31,7 @@ import sqlite3
 from typing import List, Optional, Union, Any  # Any for pd.DataFrame.iterrows()
 import pandas as pd
 import re  # For CSV header cleaning
+from .logger import logger  # Import the logger
 
 # Default path for the SQLite database file.
 DB_PATH = "chunks.db"
@@ -268,8 +269,16 @@ class ChunkRepo:
         )
         # Set row_factory to sqlite3.Row to access columns by name.
         self.conn.row_factory = sqlite3.Row
+        logger.info(
+            f"Initializing ChunkRepo for user_id: {user_id} with db_path: {db_path}"
+        )
         # Ensure the chunks table exists in the database.
-        Chunk.create_table(self.conn)
+        try:
+            Chunk.create_table(self.conn)
+            logger.info("Database and table initialized.")
+        except sqlite3.Error as e:
+            logger.error(f"Error creating table in ChunkRepo init: {e}")
+            raise  # Re-raise the exception after logging
 
     def get_all(self) -> List[Chunk]:
         """
@@ -278,12 +287,17 @@ class ChunkRepo:
         Returns:
             A list of Chunk objects. Returns an empty list if no chunks are found.
         """
-        cursor = self.conn.execute(
-            "SELECT * FROM chunks WHERE user_id = ? ORDER BY created_at DESC",
-            (self.user_id,),
-        )
-        rows = cursor.fetchall()
-        return [Chunk.from_row(row) for row in rows]
+        logger.info(f"Fetching all chunks for user {self.user_id}")
+        try:
+            cursor = self.conn.execute(
+                "SELECT * FROM chunks WHERE user_id = ? ORDER BY created_at DESC",
+                (self.user_id,),
+            )
+            rows = cursor.fetchall()
+            return [Chunk.from_row(row) for row in rows]
+        except sqlite3.Error as e:
+            logger.error(f"Error during database operation in get_all: {e}")
+            return []  # Return empty list on error
 
     def get_overdue(self, limit: int = 5) -> List[Chunk]:
         """
@@ -298,17 +312,24 @@ class ChunkRepo:
         Returns:
             A list of Chunk objects due for review, up to the specified limit.
         """
-        cursor = self.conn.execute(
-            """
-            SELECT * FROM chunks
-            WHERE user_id = ? AND DATE(next_due_date) <= DATE('now') /* SQLite date functions */
-            ORDER BY next_due_date ASC, review_count ASC /* Prioritize most overdue/least reviewed */
-            LIMIT ? /* Limit the number of chunks for daily practice queue */
-            """,
-            (self.user_id, limit),
+        logger.info(
+            f"Fetching overdue chunks for user {self.user_id} with limit {limit}"
         )
-        rows = cursor.fetchall()
-        return [Chunk.from_row(row) for row in rows]
+        try:
+            cursor = self.conn.execute(
+                """
+                SELECT * FROM chunks
+                WHERE user_id = ? AND DATE(next_due_date) <= DATE('now') /* SQLite date functions */
+                ORDER BY next_due_date ASC, review_count ASC /* Prioritize most overdue/least reviewed */
+                LIMIT ? /* Limit the number of chunks for daily practice queue */
+                """,
+                (self.user_id, limit),
+            )
+            rows = cursor.fetchall()
+            return [Chunk.from_row(row) for row in rows]
+        except sqlite3.Error as e:
+            logger.error(f"Error during database operation in get_overdue: {e}")
+            return []  # Return empty list on error
 
     def add(self, chunk: Chunk) -> Chunk:
         """
@@ -324,10 +345,16 @@ class ChunkRepo:
             The added Chunk object, now with its `id` (and potentially other fields
             like `created_at`, `updated_at`) populated from the database.
         """
+        logger.info(f"Adding chunk for user {self.user_id}: JP='{chunk.jp_prompt}'")
         chunk.user_id = (
             self.user_id
         )  # Ensure the chunk is associated with this repo's user.
-        return chunk.save(self.conn)  # Delegates to Chunk's save method.
+        try:
+            return chunk.save(self.conn)  # Delegates to Chunk's save method.
+        except sqlite3.Error as e:
+            logger.error(f"Error during database operation in add: {e}")
+            # Depending on desired error handling, you might re-raise or return None/error indicator
+            raise
 
     def update(self, chunk: Chunk) -> Chunk:
         """
@@ -345,11 +372,26 @@ class ChunkRepo:
         Raises:
             ValueError: If the chunk's `user_id` does not match the repository's `user_id`.
         """
+        # This is more of an internal method, but logging the attempt can be useful.
+        # The actual SM-2 update logic is in sm2_update function, which might be called by graph.py
+        # If this 'update' method is specifically for general chunk field updates, it's fine.
+        # If it's meant for SM2 updates, the log message about "Updating SM2 params" might be misleading here.
+        # Assuming this 'update' is for general purposes, including potential SM2 param changes from UI.
+        logger.info(f"Updating chunk ID {chunk.id} for user {self.user_id}")
         if chunk.user_id != self.user_id:
+            logger.error(
+                f"SecurityError: Attempt to update chunk ID {chunk.id} belonging to another user ({chunk.user_id}) by user {self.user_id}."
+            )
             raise ValueError(
                 "SecurityError: Attempt to update a chunk belonging to another user."
             )
-        return chunk.save(self.conn)  # Delegates to Chunk's save method.
+        try:
+            return chunk.save(self.conn)  # Delegates to Chunk's save method.
+        except sqlite3.Error as e:
+            logger.error(
+                f"Error during database operation in update for chunk ID {chunk.id}: {e}"
+            )
+            raise
 
     def bulk_update(self, df: pd.DataFrame) -> None:
         """
@@ -363,27 +405,44 @@ class ChunkRepo:
             df: A Pandas DataFrame where each row represents a chunk to be updated.
                 Requires columns like 'id', 'jp_prompt', 'en_answer', 'ef', 'interval'.
         """
+        logger.info(
+            f"Bulk updating chunks for user {self.user_id}. Number of rows: {len(df)}"
+        )
         # Iterate over DataFrame rows and update each chunk.
         # This is not the most performant way for very large bulk updates in SQLite,
         # but it's clear and leverages the existing `update` method's logic.
-        for _, row_data in df.iterrows():
-            # Construct a Chunk object from the row data.
-            # Ensure all necessary fields for Chunk are present in row_data or handled with defaults.
-            chunk_to_update = Chunk(
-                id=row_data["id"],
-                user_id=self.user_id,  # Ensure user_id is correctly scoped
-                jp_prompt=row_data["jp_prompt"],
-                en_answer=row_data["en_answer"],
-                ef=row_data["ef"],
-                interval=row_data["interval"],
-                # next_due_date might need to be parsed if it's a string in the DataFrame
-                next_due_date=pd.to_datetime(
-                    row_data.get("next_due_date", date.today())
-                ).date(),
-                review_count=int(row_data.get("review_count", 0)),
-                # created_at is usually not updated, updated_at is handled by .save()
+        updated_ids = []
+        try:
+            for _, row_data in df.iterrows():
+                # Construct a Chunk object from the row data.
+                # Ensure all necessary fields for Chunk are present in row_data or handled with defaults.
+                chunk_id = row_data["id"]
+                updated_ids.append(chunk_id)  # Keep track for logging
+                chunk_to_update = Chunk(
+                    id=chunk_id,
+                    user_id=self.user_id,  # Ensure user_id is correctly scoped
+                    jp_prompt=row_data["jp_prompt"],
+                    en_answer=row_data["en_answer"],
+                    ef=row_data["ef"],
+                    interval=row_data["interval"],
+                    # next_due_date might need to be parsed if it's a string in the DataFrame
+                    next_due_date=pd.to_datetime(
+                        row_data.get("next_due_date", date.today())
+                    ).date(),
+                    review_count=int(row_data.get("review_count", 0)),
+                    # created_at is usually not updated, updated_at is handled by .save()
+                )
+                self.update(chunk_to_update)  # Use the existing update method.
+            logger.info(
+                f"Successfully bulk updated chunk IDs: {updated_ids} for user {self.user_id}"
             )
-            self.update(chunk_to_update)  # Use the existing update method.
+        except Exception as e:  # Catch generic exception as various issues could occur
+            logger.error(
+                f"Error during bulk_update for user {self.user_id} (last attempted ID: {updated_ids[-1] if updated_ids else 'N/A'}): {e}"
+            )
+            # Depending on requirements, might raise, or try to continue, or rollback.
+            # For now, just log and stop processing this bulk update.
+            raise
 
     def delete_many(self, ids: List[int]) -> None:
         """
@@ -394,15 +453,28 @@ class ChunkRepo:
         Args:
             ids: A list of integer IDs of the chunks to be deleted.
         """
+        logger.info(f"Deleting chunks with IDs: {ids} for user {self.user_id}")
         if not ids:  # Do nothing if the list of IDs is empty.
+            logger.debug(
+                f"delete_many called with empty ID list for user {self.user_id}."
+            )
             return
         # Create a string of placeholders for the SQL IN clause (e.g., "?,?,?")
         placeholders = ",".join(["?"] * len(ids))
-        self.conn.execute(
-            f"DELETE FROM chunks WHERE user_id = ? AND id IN ({placeholders})",
-            (self.user_id, *ids),  # Unpack IDs into query parameters
-        )
-        self.conn.commit()
+        try:
+            self.conn.execute(
+                f"DELETE FROM chunks WHERE user_id = ? AND id IN ({placeholders})",
+                (self.user_id, *ids),  # Unpack IDs into query parameters
+            )
+            self.conn.commit()
+            logger.info(
+                f"Successfully deleted chunks with IDs: {ids} for user {self.user_id}"
+            )
+        except sqlite3.Error as e:
+            logger.error(
+                f"Error during database operation in delete_many for user {self.user_id}, IDs {ids}: {e}"
+            )
+            raise
 
     def reset_intervals(self, ids: List[int]) -> None:
         """
@@ -415,23 +487,39 @@ class ChunkRepo:
         Args:
             ids: A list of integer IDs of the chunks whose intervals are to be reset.
         """
+        # This method seems to be updating SM2 parameters, so logging here is appropriate.
+        logger.info(
+            f"Resetting SM2 intervals for chunk IDs: {ids} for user {self.user_id}"
+        )
         if not ids:  # Do nothing if the list of IDs is empty.
+            logger.debug(
+                f"reset_intervals called with empty ID list for user {self.user_id}."
+            )
             return
         placeholders = ",".join(["?"] * len(ids))
         today_iso = (
             date.today().isoformat()
         )  # Get today's date in ISO format for query.
-        self.conn.execute(
-            f"""
-            UPDATE chunks
-            SET interval = 0,            /* Reset interval */
-                next_due_date = ?,       /* Set due date to today */
-                review_count = 0         /* Reset review count */
-            WHERE user_id = ? AND id IN ({placeholders}) /* Scope to user and selected IDs */
-            """,
-            (today_iso, self.user_id, *ids),  # Parameters for the query
-        )
-        self.conn.commit()
+        try:
+            self.conn.execute(
+                f"""
+                UPDATE chunks
+                SET interval = 0,            /* Reset interval */
+                    next_due_date = ?,       /* Set due date to today */
+                    review_count = 0         /* Reset review count */
+                WHERE user_id = ? AND id IN ({placeholders}) /* Scope to user and selected IDs */
+                """,
+                (today_iso, self.user_id, *ids),  # Parameters for the query
+            )
+            self.conn.commit()
+            logger.info(
+                f"Successfully reset intervals for chunk IDs: {ids} for user {self.user_id}"
+            )
+        except sqlite3.Error as e:
+            logger.error(
+                f"Error during database operation in reset_intervals for user {self.user_id}, IDs {ids}: {e}"
+            )
+            raise
 
     def save_from_csv(self, file_obj: Any) -> int:
         """
@@ -448,51 +536,70 @@ class ChunkRepo:
         Returns:
             The number of chunks successfully added from the CSV.
         """
-        df = pd.read_csv(file_obj)
-
-        # Normalize column names: lowercase and remove spaces.
-        df.columns = [re.sub(r"\s+", "", str(c).lower()) for c in df.columns]
-
-        # Dynamically find Japanese and English column names (assuming they start with 'jp' or 'en').
-        # This adds flexibility if exact column names vary slightly.
+        logger.info(f"Saving chunks from CSV for user {self.user_id}")
         try:
-            col_jp = next(c for c in df.columns if c.startswith("jp"))
-            col_en = next(c for c in df.columns if c.startswith("en"))
-        except StopIteration:
-            raise ValueError(
-                "CSV must contain columns starting with 'jp' (for Japanese) and 'en' (for English)."
-            )
+            df = pd.read_csv(file_obj)
 
-        chunks_added_count = 0
-        for _, row in df.iterrows():
-            # Parse next_due_date if present, otherwise default to today.
-            next_due_val = row.get("nextduedate")  # meet standarizedized column name
-            parsed_next_due_date = (
-                date.fromisoformat(str(next_due_val))
-                if next_due_val and not pd.isna(next_due_val)
-                else date.today()
-            )
+            # Normalize column names: lowercase and remove spaces.
+            df.columns = [re.sub(r"\s+", "", str(c).lower()) for c in df.columns]
 
-            # Create and add a new Chunk object for each row in the CSV.
-            # `id` is None, so it will be an insert operation.
-            self.add(
-                Chunk(
-                    id=None,  # New chunk
-                    user_id=self.user_id,  # Associate with current user
-                    jp_prompt=str(row[col_jp]),
-                    en_answer=str(row[col_en]),
-                    ef=float(row.get("ef", 2.5)),  # Default EF if not in CSV
-                    interval=int(
-                        row.get("interval", 0)
-                    ),  # Default interval if not in CSV
-                    next_due_date=parsed_next_due_date,
-                    review_count=int(
-                        row.get("review_count", 0)
-                    ),  # Default review_count
+            # Dynamically find Japanese and English column names (assuming they start with 'jp' or 'en').
+            # This adds flexibility if exact column names vary slightly.
+            try:
+                col_jp = next(c for c in df.columns if c.startswith("jp"))
+                col_en = next(c for c in df.columns if c.startswith("en"))
+            except StopIteration:
+                logger.error(
+                    f"CSV import failed for user {self.user_id}: Required 'jp' and 'en' columns not found."
                 )
+                raise ValueError(
+                    "CSV must contain columns starting with 'jp' (for Japanese) and 'en' (for English)."
+                )
+
+            chunks_added_count = 0
+            for i, row in df.iterrows():  # Added index for logging
+                try:
+                    # Parse next_due_date if present, otherwise default to today.
+                    next_due_val = row.get(
+                        "nextduedate"
+                    )  # meet standardized column name
+                    parsed_next_due_date = (
+                        date.fromisoformat(str(next_due_val))
+                        if next_due_val and not pd.isna(next_due_val)
+                        else date.today()
+                    )
+
+                    # Create and add a new Chunk object for each row in the CSV.
+                    # `id` is None, so it will be an insert operation.
+                    self.add(
+                        Chunk(
+                            id=None,  # New chunk
+                            user_id=self.user_id,  # Associate with current user
+                            jp_prompt=str(row[col_jp]),
+                            en_answer=str(row[col_en]),
+                            ef=float(row.get("ef", 2.5)),  # Default EF if not in CSV
+                            interval=int(
+                                row.get("interval", 0)
+                            ),  # Default interval if not in CSV
+                            next_due_date=parsed_next_due_date,
+                            review_count=int(
+                                row.get("review_count", 0)
+                            ),  # Default review_count
+                        )
+                    )
+                    chunks_added_count += 1
+                except Exception as e_row:  # Catch error per row
+                    logger.error(
+                        f"Error processing row {i} during CSV import for user {self.user_id}. Row data: {row.to_dict()}. Error: {e_row}"
+                    )
+                    # Decide if to continue or stop. For now, continue.
+            logger.info(
+                f"Successfully added {chunks_added_count} chunks from CSV for user {self.user_id}."
             )
-            chunks_added_count += 1
-        return chunks_added_count
+            return chunks_added_count
+        except Exception as e:  # Catch errors like pd.read_csv failure
+            logger.error(f"Error during save_from_csv for user {self.user_id}: {e}")
+            raise
 
     def export_all(self) -> str:
         """
@@ -501,22 +608,50 @@ class ChunkRepo:
         Returns:
             A string containing the CSV data.
         """
-        cursor = self.conn.execute(
-            "SELECT * FROM chunks WHERE user_id = ? ORDER BY created_at ASC",
-            (self.user_id,),
-        )
-        rows = cursor.fetchall()
-        # Convert list of sqlite3.Row objects to list of dicts for DataFrame creation.
-        df = pd.DataFrame([dict(row) for row in rows])
-        return df.to_csv(index=False)  # Convert DataFrame to CSV string without index.
+        logger.info(f"Exporting all chunks for user {self.user_id}")
+        try:
+            cursor = self.conn.execute(
+                "SELECT * FROM chunks WHERE user_id = ? ORDER BY created_at ASC",
+                (self.user_id,),
+            )
+            rows = cursor.fetchall()
+            # Convert list of sqlite3.Row objects to list of dicts for DataFrame creation.
+            df = pd.DataFrame([dict(row) for row in rows])
+            csv_data = df.to_csv(
+                index=False
+            )  # Convert DataFrame to CSV string without index.
+            logger.info(
+                f"Successfully exported {len(rows)} chunks to CSV for user {self.user_id}"
+            )
+            return csv_data
+        except sqlite3.Error as e:
+            logger.error(
+                f"Error during database operation in export_all for user {self.user_id}: {e}"
+            )
+            return ""  # Return empty string on error
+        except (
+            Exception
+        ) as e_general:  # Catch other potential errors e.g. pandas issues
+            logger.error(
+                f"General error during export_all for user {self.user_id}: {e_general}"
+            )
+            return ""
 
     def reset(self) -> None:
         """
         Deletes ALL chunks belonging to the current user from the database.
         This is a destructive operation.
         """
-        self.conn.execute("DELETE FROM chunks WHERE user_id = ?", (self.user_id,))
-        self.conn.commit()
+        logger.info(f"Resetting (deleting) all chunks for user {self.user_id}")
+        try:
+            self.conn.execute("DELETE FROM chunks WHERE user_id = ?", (self.user_id,))
+            self.conn.commit()
+            logger.info(f"Successfully reset all chunks for user {self.user_id}")
+        except sqlite3.Error as e:
+            logger.error(
+                f"Error during database operation in reset for user {self.user_id}: {e}"
+            )
+            raise
 
 
 ###############################################################################
@@ -549,7 +684,19 @@ def sm2_update(chunk: Chunk, quality: int) -> Chunk:
     Raises:
         ValueError: If `quality` is not an integer between 0 and 5.
     """
+    # This function is a utility and might be called from various places (e.g., graph.py).
+    # Logging the input chunk ID and quality can be very helpful for tracing.
+    # Note: chunk.user_id might not be directly available if this function is called
+    # with a Chunk object that hasn't been associated with a user yet, or if it's used
+    # in a context outside ChunkRepo. For now, assume it's a persisted chunk.
+    logger.info(
+        f"Updating SM2 params for chunk ID {chunk.id} (user {chunk.user_id if chunk.user_id else 'N/A'}) with quality {quality}"
+    )
+
     if not (isinstance(quality, int) and 0 <= quality <= 5):
+        logger.error(
+            f"Invalid quality value {quality} for chunk ID {chunk.id}. Must be int 0-5."
+        )
         raise ValueError("Recall quality must be an integer between 0 and 5.")
 
     # Update Easiness Factor (EF) based on quality, but only if quality >= 3.

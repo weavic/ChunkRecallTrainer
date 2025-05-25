@@ -12,6 +12,7 @@ Attributes:
 import os
 import streamlit as st
 from typing import List, Optional, Dict
+from .logger import logger # Import the logger
 
 class AppConfig:
     """
@@ -35,19 +36,27 @@ class AppConfig:
         Initializes AppConfig by loading settings from environment variables
         or Streamlit secrets.
         """
+        logger.info("Initializing AppConfig.")
         # Attempt to load OpenAI API key from environment variables first, then Streamlit secrets
         self.openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
-        
+        logger.info("OpenAI API key loaded." if self.openai_api_key else "OpenAI API key not found.")
+
         # Firebase configuration details
         self.firebase_api_key: Optional[str] = os.getenv("FIREBASE_API_KEY")
+        logger.info("Firebase API key loaded." if self.firebase_api_key else "Firebase API key not found.")
         self.firebase_auth_domain: Optional[str] = os.getenv("FIREBASE_AUTH_DOMAIN")
+        logger.info("Firebase Auth Domain loaded." if self.firebase_auth_domain else "Firebase Auth Domain not found.")
         self.firebase_measurement_id: Optional[str] = os.getenv("FIREBASE_MEASUREMENT_ID")
-        
+        logger.info("Firebase Measurement ID loaded." if self.firebase_measurement_id else "Firebase Measurement ID not found.")
+
         # Allowed emails for application access control
         self.allowed_emails: str = os.getenv("ALLOWED_EMAILS", "") # Defaults to empty string if not set
-        
+        logger.info(f"Allowed emails configured: '{self.allowed_emails}'" if self.allowed_emails else "No specific emails allowed (empty string).")
+
         # LangSmith API key (retained for potential future use, though currently not active in graph)
         self.langsmith_api_key: Optional[str] = os.getenv("LANGSMITH_API_KEY")
+        logger.info("LangSmith API key loaded." if self.langsmith_api_key else "LangSmith API key not found.")
+        logger.info("AppConfig initialized.")
 
     @property
     def firebase_config(self) -> Dict[str, Optional[str]]:
