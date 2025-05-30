@@ -1,10 +1,18 @@
 FROM python:3.13-slim
 
 # Install required system packages
-RUN apt-get update && apt-get install -y curl git build-essential sqlite3 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y curl git build-essential sqlite3 nodejs npm && pip install uv && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspaces/ChunkRecallTrainer
+COPY pyproject.toml ./
+COPY . .
+RUN uv pip install --system --no-cache .
+
+RUN git clone https://github.com/munaita-0/streamlit-firebase-auth.git /tmp/sfa && \
+    cd /tmp/sfa/streamlit_firebase_auth/frontend && npm install && npm run build && \
+    cd /tmp/sfa && uv pip install --system . && rm -rf /tmp/sfa
 
 RUN useradd -m vscode
-
 USER vscode
 WORKDIR /workspace
 
