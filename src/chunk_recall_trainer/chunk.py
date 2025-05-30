@@ -31,7 +31,7 @@ import sqlite3
 from typing import List, Optional, Union, Any  # Any for pd.DataFrame.iterrows()
 import pandas as pd
 import re  # For CSV header cleaning
-from .logger import logger  # Import the logger
+from chunk_recall_trainer.logger import logger  # Import the logger
 
 # Default path for the SQLite database file.
 DB_PATH = "chunks.db"
