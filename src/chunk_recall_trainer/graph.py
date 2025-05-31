@@ -9,15 +9,21 @@ exercise generation and user answer review. The graph can:
 The flow is conditional: if user input is provided, the graph proceeds to review;
 otherwise, it stops after exercise generation.
 """
+
 # graph.py
-from typing import TypedDict, Optional, Any # Any is used for the graph state values, though more specific types are preferred if possible
+from typing import (
+    TypedDict,
+    Optional,
+    Any,
+)  # Any is used for the graph state values, though more specific types are preferred if possible
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
+
 # PydanticOutputParser is implicitly used by .with_structured_output()
 from pydantic import BaseModel, Field
 from langgraph.graph import StateGraph, END
-from .config import app_config
-from .logger import logger # Import the logger
+from chunk_recall_trainer.config import app_config
+from chunk_recall_trainer.logger import logger  # Import the logger
 
 # ────────────────────── Prompt Templates ──────────────────────
 # These templates define the instructions for the LLM for different tasks.
@@ -54,15 +60,21 @@ Return in markdown:
 # -------------------- Pydantic Schemas for LLM Output Parsing --------------------
 # These schemas define the expected structure of the JSON output from the LLM.
 
+
 class ExerciseSchema(BaseModel):
     """Pydantic schema for parsing the output of exercise generation LLM call."""
+
     question: str = Field(..., description="English prompt for the learner")
     answer_key: str = Field(..., description="One model answer using the chunk")
 
+
 class ReviewSchema(BaseModel):
     """Pydantic schema for parsing the output of answer review LLM call."""
+
     score: int = Field(..., description="Score 0-5 based on the user's answer")
-    better: Optional[str] = Field(None, description="A suggested better alternative answer, if any")
+    better: Optional[str] = Field(
+        None, description="A suggested better alternative answer, if any"
+    )
     comment: str = Field(..., description="Feedback commentary in Japanese")
 
 
@@ -70,17 +82,18 @@ class ReviewSchema(BaseModel):
 class GraphState(TypedDict):
     """
     Defines the state structure for the LangGraph application.
-    
+
     This TypedDict holds all the data that is passed between nodes in the graph.
     Fields are optional where appropriate to allow for conditional execution paths
     (e.g., feedback is only present after the review node).
     """
-    jp_prompt: str                 # Original Japanese prompt for the chunk.
-    en_answer: str                 # Original English answer/chunk.
-    user_input: Optional[str]      # User's attempted answer to the exercise.
-    question: Optional[str]        # Generated English question for the user.
-    answer_key: Optional[str]      # Generated model answer for the question.
-    feedback: Optional[str]        # Feedback provided after reviewing user_input.
+
+    jp_prompt: str  # Original Japanese prompt for the chunk.
+    en_answer: str  # Original English answer/chunk.
+    user_input: Optional[str]  # User's attempted answer to the exercise.
+    question: Optional[str]  # Generated English question for the user.
+    answer_key: Optional[str]  # Generated model answer for the question.
+    feedback: Optional[str]  # Feedback provided after reviewing user_input.
 
 
 # -------------------- LLM Configuration --------------------
@@ -102,6 +115,7 @@ llm_fb = llm.with_structured_output(ReviewSchema)
 # -------------------- Graph Node Functions --------------------
 # These functions define the individual processing steps (nodes) in the graph.
 
+
 def generate_exercise_node(state: GraphState) -> GraphState:
     """
     Generates an exercise question and its answer key using the LLM.
@@ -119,7 +133,9 @@ def generate_exercise_node(state: GraphState) -> GraphState:
     # Skip generation if question and answer_key are already provided in the input state.
     # This is useful when feedback is requested for an existing question.
     if state.get("question") and state.get("answer_key"):
-        logger.info("Skipping exercise generation as question and answer_key already in state.")
+        logger.info(
+            "Skipping exercise generation as question and answer_key already in state."
+        )
         return state
 
     # Define the chain for exercise generation: PromptTemplate -> LLM (with ExerciseSchema)
@@ -127,16 +143,22 @@ def generate_exercise_node(state: GraphState) -> GraphState:
     chain = template_ex | llm_ex
 
     try:
-        logger.info(f"Generating exercise for JP: '{state['jp_prompt']}', EN: '{state['en_answer']}'")
+        logger.info(
+            f"Generating exercise for JP: '{state['jp_prompt']}', EN: '{state['en_answer']}'"
+        )
         # Invoke the chain with necessary inputs from the state
-        result = chain.invoke({"jp": state["jp_prompt"], "en_chunk": state["en_answer"]})
+        result = chain.invoke(
+            {"jp": state["jp_prompt"], "en_chunk": state["en_answer"]}
+        )
 
         # Update the state with the generated question and answer key.
         # A copy of the state is made to ensure immutability of the input state.
         new_state = state.copy()
         new_state["question"] = result.question
         new_state["answer_key"] = result.answer_key
-        logger.info(f"Exercise generated: Q='{result.question}', AK='{result.answer_key}'")
+        logger.info(
+            f"Exercise generated: Q='{result.question}', AK='{result.answer_key}'"
+        )
         return new_state
     except Exception as e:
         logger.error(f"Error in generate_exercise_node: {e}")
@@ -164,7 +186,9 @@ def review_output_node(state: GraphState) -> GraphState:
     if not state.get("user_input") or not state.get("answer_key"):
         logger.warning("User input or answer key missing for review.")
         error_state = state.copy()
-        error_state["feedback"] = "Error: User input or model answer key missing for review."
+        error_state["feedback"] = (
+            "Error: User input or model answer key missing for review."
+        )
         return error_state
 
     # Define the chain for feedback generation: PromptTemplate -> LLM (with ReviewSchema)
@@ -172,26 +196,34 @@ def review_output_node(state: GraphState) -> GraphState:
     chain = template_fb | llm_fb
 
     try:
-        logger.info(f"Reviewing user input: '{state['user_input']}' against answer key: '{state['answer_key']}' for chunk: '{state['en_answer']}'")
+        logger.info(
+            f"Reviewing user input: '{state['user_input']}' against answer key: '{state['answer_key']}' for chunk: '{state['en_answer']}'"
+        )
         # Invoke the chain with necessary inputs from the state
         result = chain.invoke(
             {
-                "en_chunk": state["en_answer"],      # The original English chunk being practiced
+                "en_chunk": state[
+                    "en_answer"
+                ],  # The original English chunk being practiced
                 "user_answer": state["user_input"],  # The user's attempt
-                "model_answer": state["answer_key"], # The model's answer to the generated question
+                "model_answer": state[
+                    "answer_key"
+                ],  # The model's answer to the generated question
             }
         )
 
         # Format the feedback into a markdown string
         comment_md = f"**Score:** {result.score}/5\n\n"
-        if result.better: # Add suggested better answer if provided by LLM
+        if result.better:  # Add suggested better answer if provided by LLM
             comment_md += f"**Better:** {result.better}\n\n"
         comment_md += result.comment
 
         # Update the state with the generated feedback.
         feedback_state = state.copy()
         feedback_state["feedback"] = comment_md
-        logger.info(f"Feedback generated: Score={result.score}, Better='{result.better}', Comment='{result.comment}'")
+        logger.info(
+            f"Feedback generated: Score={result.score}, Better='{result.better}', Comment='{result.comment}'"
+        )
         return feedback_state
     except Exception as e:
         logger.error(f"Error in review_output_node: {e}")
@@ -199,8 +231,10 @@ def review_output_node(state: GraphState) -> GraphState:
         error_state["feedback"] = "Error generating feedback."
         return error_state
 
+
 # -------------------- Conditional Edge Logic --------------------
 # This function determines the next step in the graph after exercise generation.
+
 
 def should_review(state: GraphState) -> str:
     """
@@ -215,12 +249,15 @@ def should_review(state: GraphState) -> str:
     Returns:
         A string indicating the name of the next node or END.
     """
-    user_input_present = state.get("user_input") and state.get("user_input","").strip()
-    logger.info(f"Conditional edge 'should_review': User input present = {bool(user_input_present)}. Transitioning to '{'review_output_node' if user_input_present else 'END'}'")
+    user_input_present = state.get("user_input") and state.get("user_input", "").strip()
+    logger.info(
+        f"Conditional edge 'should_review': User input present = {bool(user_input_present)}. Transitioning to '{'review_output_node' if user_input_present else 'END'}'"
+    )
     if user_input_present:
         return "review_output_node"  # Proceed to review if user input exists
     else:
         return END  # End the graph if no user input is provided
+
 
 # -------------------- Graph Assembly --------------------
 # Construct the LangGraph StateGraph.
@@ -242,11 +279,11 @@ workflow.set_entry_point("generate_exercise_node")
 # - If 'should_review' returns END, the graph execution finishes.
 workflow.add_conditional_edges(
     "generate_exercise_node",  # Source node
-    should_review,             # Function to determine the route
-    {                          # Mapping of function return values to next nodes
+    should_review,  # Function to determine the route
+    {  # Mapping of function return values to next nodes
         "review_output_node": "review_output_node",
-        END: END
-    }
+        END: END,
+    },
 )
 
 # Define the edge from 'review_output_node'.

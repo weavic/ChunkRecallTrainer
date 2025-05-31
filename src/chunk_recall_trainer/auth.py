@@ -10,9 +10,9 @@ defined in the application configuration.
 
 import streamlit as st
 from streamlit_firebase_auth import FirebaseAuth  # type: ignore # library type hints may be missing
-from .config import AppConfig
+from chunk_recall_trainer.config import AppConfig
 from typing import Optional, Dict, Any
-from .logger import logger
+from chunk_recall_trainer.logger import logger
 
 # Type alias for user object for clarity, actual structure depends on FirebaseAuth library
 User = Dict[str, Any]
