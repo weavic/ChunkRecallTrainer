@@ -3,7 +3,19 @@ name = "chunk_recall_trainer"
 version = "0.0.0"
 description = "Spaced-repetition trainer for English chunks"
 requires-python = ">=3.9"
-dependencies = []
+dependencies = [
+  "streamlit",
+  "pandas",
+  "langchain-core",
+  "langchain-openai>=0.1.8",
+  "pydantic>=2.6",
+  "openai>=1.0.0",
+  "langsmith",
+  "langgraph",
+  "streamlit-firebase-auth",
+  "firebase_admin",
+  "pytest"
+]
 
 [project.optional-dependencies]
 dev = ["pytest"]
